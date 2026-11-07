@@ -228,7 +228,7 @@ npm test
 Live check against the real Gemini API (makes billed calls; needs `GEMINI_API_KEY`):
 
 ```bash
-GEMINI_LIVE_TEST=1 node --test test/gemini.live.test.js
+npm run test:live
 ```
 
 ### Test Coverage Highlights:

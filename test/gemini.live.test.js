@@ -1,11 +1,13 @@
 // Live end-to-end check against the real Gemini API with the production config.
 // Skipped unless GEMINI_LIVE_TEST=1 (needs GEMINI_API_KEY in .env; makes real, billed calls).
-//   GEMINI_LIVE_TEST=1 node --test test/gemini.live.test.js
+//   npm run test:live        (any shell)
+//   GEMINI_LIVE_TEST=1 node --test test/gemini.live.test.js                  (bash)
+//   $env:GEMINI_LIVE_TEST = "1"; node --test test/gemini.live.test.js         (PowerShell)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { listen, api, parseSse } from './helpers.js';
 
-const live = process.env.GEMINI_LIVE_TEST === '1';
+const live = process.env.GEMINI_LIVE_TEST === '1' || process.env.npm_lifecycle_event === 'test:live';
 
 test('LIVE Gemini: chat works without falling back to the mock', { skip: !live && 'set GEMINI_LIVE_TEST=1' }, async (t) => {
   process.env.MOCK_AI = 'false';
