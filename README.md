@@ -83,6 +83,7 @@ ai-checkout/
 │   ├── sessions.js            # In-memory sessions with idle cleanup
 │   ├── rateLimit.js           # Per-IP fixed-window rate limiter
 │   ├── paypal.js              # PayPal OAuth, orders, capture, webhook verification
+│   ├── db.js                  # SQLite store for orders and webhook events
 │   ├── ai/
 │   │   ├── gemini.js          # Gemini chat, thinking config, caching, health, self-check
 │   │   ├── tools.js           # Function declarations and the shared tool dispatcher
@@ -99,7 +100,7 @@ ai-checkout/
 
 ## 📋 Prerequisites
 
-1. **Node.js**: Version 20.x or later installed (`node -v`)
+1. **Node.js**: Version 22.13 or later installed (for the built-in SQLite module) (`node -v`)
 2. **PayPal Developer Sandbox Account**:
    - Free account at [developer.paypal.com](https://developer.paypal.com/)
    - Default Sandbox Business App credentials (`Client ID` and `Secret`)
@@ -193,8 +194,13 @@ The capture response is not the only source of truth: PayPal also notifies the s
 
 Every webhook is verified with PayPal's `verify-webhook-signature` API before it is trusted; duplicates are
 ignored. A capture that comes back `PENDING` returns HTTP 202 and is settled when `PAYMENT.CAPTURE.COMPLETED`
-arrives. `GET /api/paypal/orders/:orderID?sessionId=...` shows an order's status. Orders are stored in memory,
-so they are lost on restart; use a database in production.
+arrives. `GET /api/paypal/orders/:orderID?sessionId=...` shows an order's status.
+
+Orders and processed webhook events are stored in **SQLite** (Node's built-in `node:sqlite`, no extra
+dependency) at `DATABASE_PATH` (default `./data/ai-checkout.db`), so payments survive a restart and a pending
+payment can still be settled by a webhook that arrives later. Carts and chat sessions remain in memory.
+On hosts with an ephemeral filesystem (e.g. Render's free tier) attach a persistent disk and point
+`DATABASE_PATH` at it.
 
 ### Handling Cancellations or Declines
 - If you click "Cancel and return to store" during PayPal checkout, the application keeps your cart intact and displays a non-destructive notice: *"Payment was cancelled. Your items remain in your cart."*

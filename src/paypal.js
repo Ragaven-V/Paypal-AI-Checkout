@@ -1,17 +1,12 @@
 import { config } from './config.js';
 import { getCartSummary, removePaidItems } from './cart.js';
 import { sessions } from './sessions.js';
+import { orderStore, webhookEventStore, clearAllForTesting } from './db.js';
 
 let cachedToken = null;
 
-/**
- * Orders created through this server, keyed by PayPal order ID.
- * { orderId, sessionId, items: Map(productId -> qty), totalFormatted, status, captureId,
- *   settled, webhookConfirmed, createdAt, updatedAt }
- * In-memory: lost on restart (swap for a database in production).
- */
-export const orders = new Map();
-const processedWebhookEvents = new Set();
+// Orders and processed webhook events are persisted in SQLite (see db.js), so a restart
+// never loses a payment record.
 
 function httpError(message, status) {
   const err = new Error(message);
@@ -21,8 +16,7 @@ function httpError(message, status) {
 
 export function resetPayPalStateForTesting() {
   cachedToken = null;
-  orders.clear();
-  processedWebhookEvents.clear();
+  clearAllForTesting();
 }
 
 export async function getPayPalAccessToken() {
@@ -97,28 +91,24 @@ export async function createPayPalOrder(session) {
 
   const order = await res.json();
   session.currentOrderId = order.id;
-  orders.set(order.id, {
+  orderStore.insert({
     orderId: order.id,
     sessionId: session.id,
     // Snapshot exactly what this order charges for, so settlement only removes paid items
     items: new Map(summary.items.map(i => [i.id, i.quantity])),
+    totalCents: summary.totalCents,
     totalFormatted: summary.totalFormatted,
-    status: order.status || 'CREATED',
-    captureId: null,
-    settled: false,
-    webhookConfirmed: false,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    status: order.status || 'CREATED'
   });
   return order;
 }
 
-// Mark an order paid and remove its items from the session cart (idempotent)
+// Mark an order paid and remove its items from the session cart (idempotent).
+// The caller persists the record with orderStore.save().
 function settleOrder(record) {
   if (record.settled) return;
   record.settled = true;
   record.status = 'COMPLETED';
-  record.updatedAt = Date.now();
   const session = sessions.get(record.sessionId);
   if (session) {
     removePaidItems(session, record.items);
@@ -129,9 +119,13 @@ function settleOrder(record) {
 }
 
 export async function capturePayPalOrder(session, orderID) {
-  const record = orders.get(orderID);
-  if (!session.currentOrderId || session.currentOrderId !== orderID || !record || record.sessionId !== session.id) {
+  // Ownership comes from the stored order, so capture still works after a server restart
+  const record = orderStore.get(orderID);
+  if (!record || record.sessionId !== session.id) {
     throw httpError('Untrusted or invalid order ID for this session.', 400);
+  }
+  if (record.settled) {
+    throw httpError('This order has already been paid.', 409);
   }
 
   const res = await paypalFetch(`/v2/checkout/orders/${encodeURIComponent(orderID)}/capture`, { method: 'POST' });
@@ -145,7 +139,6 @@ export async function capturePayPalOrder(session, orderID) {
   const captureData = await res.json();
   const capture = captureData.purchase_units?.[0]?.payments?.captures?.[0];
   record.captureId = capture?.id || record.captureId;
-  record.updatedAt = Date.now();
 
   // The order can be COMPLETED while the capture itself is still PENDING (e.g. under review);
   // only treat it as paid when the capture is COMPLETED. A later webhook settles pending ones.
@@ -155,12 +148,13 @@ export async function capturePayPalOrder(session, orderID) {
   } else {
     record.status = captureStatus === 'PENDING' ? 'PENDING' : (captureData.status || 'UNKNOWN');
   }
+  orderStore.save(record);
 
   return { captureData, record };
 }
 
 export function getOrderForSession(session, orderID) {
-  const record = orders.get(orderID);
+  const record = orderStore.get(orderID);
   if (!record || record.sessionId !== session.id) return null;
   return {
     orderID: record.orderId,
@@ -217,40 +211,53 @@ function orderIdFromEvent(event) {
  * Returns a short description of what happened (for logs/tests).
  */
 export function handleWebhookEvent(event) {
-  if (event.id && processedWebhookEvents.has(event.id)) {
+  const orderId = orderIdFromEvent(event);
+  if (event.id && !webhookEventStore.tryInsert(event.id, event.event_type, orderId)) {
     return 'duplicate';
   }
-  if (event.id) processedWebhookEvents.add(event.id);
 
-  const orderId = orderIdFromEvent(event);
-  const record = orderId ? orders.get(orderId) : null;
+  const outcome = applyWebhookEvent(event, orderId);
+  if (event.id) webhookEventStore.setOutcome(event.id, outcome);
+  return outcome;
+}
+
+function applyWebhookEvent(event, orderId) {
+  const record = orderId ? orderStore.get(orderId) : null;
   if (!record) {
     return 'unknown-order';
   }
 
   record.webhookConfirmed = true;
-  record.updatedAt = Date.now();
+  let outcome;
 
   switch (event.event_type) {
     case 'PAYMENT.CAPTURE.COMPLETED':
       record.captureId = event.resource?.id || record.captureId;
       settleOrder(record);
-      return 'settled';
+      outcome = 'settled';
+      break;
     case 'PAYMENT.CAPTURE.PENDING':
       if (!record.settled) record.status = 'PENDING';
-      return 'pending';
+      outcome = 'pending';
+      break;
     case 'PAYMENT.CAPTURE.DENIED':
     case 'PAYMENT.CAPTURE.DECLINED':
       record.status = 'DENIED';
-      return 'denied';
+      outcome = 'denied';
+      break;
     case 'PAYMENT.CAPTURE.REFUNDED':
     case 'PAYMENT.CAPTURE.REVERSED':
       record.status = event.event_type.endsWith('REFUNDED') ? 'REFUNDED' : 'REVERSED';
-      return 'refunded';
+      outcome = 'refunded';
+      break;
     case 'CHECKOUT.ORDER.APPROVED':
       if (!record.settled) record.status = 'APPROVED';
-      return 'approved';
+      outcome = 'approved';
+      break;
     default:
-      return 'ignored';
+      outcome = 'ignored';
   }
+
+  orderStore.save(record);
+  return outcome;
 }

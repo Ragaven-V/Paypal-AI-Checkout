@@ -12,6 +12,7 @@ export function setTestEnv(overrides = {}) {
     PAYPAL_WEBHOOK_ID: 'WH-TEST',
     RATE_LIMIT_CHAT_PER_MIN: '1000',
     RATE_LIMIT_API_PER_MIN: '1000',
+    DATABASE_PATH: ':memory:',
     ...overrides
   });
 }

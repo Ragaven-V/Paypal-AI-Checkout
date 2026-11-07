@@ -5,6 +5,7 @@ dotenv.config({ quiet: true });
 // Read lazily so tests (and runtime changes) can override process.env before each call.
 export const config = {
   get port() { return Number(process.env.PORT) || 3000; },
+  get databasePath() { return process.env.DATABASE_PATH || './data/ai-checkout.db'; },
 
   get geminiApiKey() { return (process.env.GEMINI_API_KEY || '').trim(); },
   get geminiModel() { return process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'; },
