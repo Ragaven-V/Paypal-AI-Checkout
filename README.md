@@ -74,21 +74,27 @@
 
 ```
 ai-checkout/
-├── server.js              # Express app, catalog, cart logic, Gemini tools, PayPal routes
-├── catalog.json           # 12 curated products (id, name, price, category, tags, description)
-├── public/
-│   └── index.html         # Responsive chat UI, product recommendation cards, cart, PayPal buttons
-├── test/
-│   ├── cart-math.test.js  # Unit tests for integer cents math, clamping, and subtotals
-│   ├── tools.test.js      # Unit tests for Gemini search, add, remove, and view tools
-│   └── api.test.js        # API tests: empty cart rejection, fraud protection, mock AI
-├── .env.example           # Clean environment template
-├── .gitignore             # Git ignore file protecting .env and node_modules
-├── package.json           # Dependencies and test runner script
-├── LICENSE                # Open-source MIT License
-└── README.md              # Project documentation and setup guide
+├── server.js                  # Entry point: builds the app, starts the server, AI self-check
+├── src/
+│   ├── app.js                 # Express app: middleware, rate limits, routers, 404/SPA fallback
+│   ├── config.js              # Environment settings (read lazily)
+│   ├── catalog.js             # Catalog loading and product search
+│   ├── cart.js                # Cart math in integer cents, add/decrement/remove/view
+│   ├── sessions.js            # In-memory sessions with idle cleanup
+│   ├── rateLimit.js           # Per-IP fixed-window rate limiter
+│   ├── paypal.js              # PayPal OAuth, orders, capture, webhook verification
+│   ├── ai/
+│   │   ├── gemini.js          # Gemini chat, thinking config, caching, health, self-check
+│   │   ├── tools.js           # Function declarations and the shared tool dispatcher
+│   │   ├── instructions.js    # System instructions
+│   │   └── mockAi.js          # Rule-based fallback assistant
+│   └── routes/
+│       ├── api.js             # /api/config, /api/catalog, /api/cart/*, /api/chat
+│       └── paypal.js          # /api/paypal/* and the webhook handler
+├── catalog.json               # Curated products
+├── public/index.html          # Chat UI, product cards, cart, PayPal buttons
+└── test/                      # Unit + HTTP tests (fake PayPal and fake Gemini), opt-in live test
 ```
-
 ---
 
 ## 📋 Prerequisites
@@ -131,12 +137,24 @@ PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com
 
 # Google Gemini API Key (from aistudio.google.com)
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-3.8-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
+# Gemini 3 uses thinkingLevel (minimal|low|medium|high). Never thinkingBudget: it returns 400.
+GEMINI_THINKING_LEVEL=low
+
+# PayPal webhooks (developer.paypal.com > your app > Webhooks > Webhook ID)
+PAYPAL_WEBHOOK_ID=
 
 # Server Configuration
 PORT=3000
 MOCK_AI=false
+TRUST_PROXY=            # set to 1 behind one reverse proxy (Render, Nginx) so per-IP limits work
+RATE_LIMIT_CHAT_PER_MIN=20
+RATE_LIMIT_API_PER_MIN=120
 ```
+
+On startup the server runs a one-request **Gemini self-check** with the exact production config and logs
+`❌ Gemini self-check FAILED` if anything is wrong. While Gemini is failing, the header badge shows
+**"AI degraded: using fallback"** instead of silently answering from the mock assistant.
 
 ### 3. Run the Server
 
@@ -162,6 +180,21 @@ Open your browser to: **`http://localhost:3000`**
    - Review the order: note that PayPal shows the itemized items and price breakdown.
    - Click **Complete Purchase** or **Pay Now**.
 6. The window closes, payment is captured on the server via `POST /api/paypal/capture-order`, the cart clears, and the **Order Confirmed** dialog appears showing your confirmed PayPal Order ID!
+
+### PayPal Webhooks (payment confirmation)
+
+The capture response is not the only source of truth: PayPal also notifies the server.
+
+1. Expose your server publicly (for local testing use a tunnel such as `ngrok http 3000`).
+2. In developer.paypal.com > your sandbox app > **Webhooks**, add `https://<your-host>/api/paypal/webhook`
+   and subscribe to `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.PENDING`, `PAYMENT.CAPTURE.DENIED`,
+   `PAYMENT.CAPTURE.REFUNDED`, `PAYMENT.CAPTURE.REVERSED` and `CHECKOUT.ORDER.APPROVED`.
+3. Copy the **Webhook ID** into `PAYPAL_WEBHOOK_ID` and restart.
+
+Every webhook is verified with PayPal's `verify-webhook-signature` API before it is trusted; duplicates are
+ignored. A capture that comes back `PENDING` returns HTTP 202 and is settled when `PAYMENT.CAPTURE.COMPLETED`
+arrives. `GET /api/paypal/orders/:orderID?sessionId=...` shows an order's status. Orders are stored in memory,
+so they are lost on restart; use a database in production.
 
 ### Handling Cancellations or Declines
 - If you click "Cancel and return to store" during PayPal checkout, the application keeps your cart intact and displays a non-destructive notice: *"Payment was cancelled. Your items remain in your cart."*
@@ -192,7 +225,14 @@ Run the automated test suite powered by the Node.js native test runner:
 npm test
 ```
 
+Live check against the real Gemini API (makes billed calls; needs `GEMINI_API_KEY`):
+
+```bash
+GEMINI_LIVE_TEST=1 node --test test/gemini.live.test.js
+```
+
 ### Test Coverage Highlights:
+- **HTTP API tests** start the real app on a random port with a **fake PayPal server** and a **fake Gemini client**: cart add/decrement/remove, validation, JSON 404s, chat (JSON + SSE), tool-call round trips, no duplicate cart actions on AI failure, visible degraded mode, PayPal create/capture/pending/webhook flows, signature rejection, duplicate events, and per-IP rate limits.
 - **Integer Cents Cart Math**: Verifies no floating-point rounding errors (`$39.99 * 2 = 7998 cents`).
 - **Tool Execution**: Verifies catalog searches, budget filters, item limit truncation (max 5), add, remove, and view operations.
 - **Security & Route Verification**: Verifies `POST /api/paypal/create-order` rejects empty carts with 400 Bad Request, and `POST /api/paypal/capture-order` rejects spoofed or untrusted order IDs.

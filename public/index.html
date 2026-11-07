@@ -1620,6 +1620,8 @@
               } else if (eventData.type === 'products' && Array.isArray(eventData.products)) {
                 renderProductCardsIntoGrid(streamingElement.productsGrid, eventData.products);
                 chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+              } else if (eventData.type === 'notice' && eventData.message) {
+                showToast(eventData.message, 'warning');
               } else if (eventData.type === 'cart' && eventData.cart) {
                 renderCart(eventData.cart);
               } else if (eventData.type === 'done') {
@@ -1739,6 +1741,10 @@
               });
 
               const captureData = await res.json();
+              if (res.status === 202) {
+                showToast(captureData.error || 'Payment is pending review by PayPal.', 'warning');
+                return;
+              }
               if (!res.ok) {
                 showToast(captureData.error || 'Payment capture failed', 'error');
                 return;
@@ -1788,7 +1794,11 @@
         const configRes = await fetch('/api/config');
         if (configRes.ok) {
           config = await configRes.json();
-          if (config.mockAi) {
+          if (config.aiDegraded) {
+            badgeAiModeEl.textContent = '⚠️ AI degraded: using fallback';
+            badgeAiModeEl.className = 'badge badge-mock';
+            badgeAiModeEl.title = `Gemini requests are failing: ${config.aiLastError || 'unknown error'}`;
+          } else if (config.mockAi) {
             badgeAiModeEl.textContent = '🤖 Mock AI Mode';
             badgeAiModeEl.className = 'badge badge-mock';
             badgeAiModeEl.title = 'Running on rule-based shopping assistant (MOCK_AI=true or no GEMINI_API_KEY)';
