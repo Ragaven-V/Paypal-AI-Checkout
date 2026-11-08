@@ -108,7 +108,7 @@ ai-checkout/
 
 ## 📋 Prerequisites
 
-1. **Node.js**: Version 22.13 or later installed (for the built-in SQLite module) (`node -v`)
+1. **Node.js**: Version 22 or later installed (`node -v`)
 2. **PayPal Developer Sandbox Account**:
    - Free account at [developer.paypal.com](https://developer.paypal.com/)
    - Default Sandbox Business App credentials (`Client ID` and `Secret`)
@@ -210,6 +210,21 @@ payment can still be settled by a webhook that arrives later. Carts and chat ses
 On hosts with an ephemeral filesystem (e.g. Render's free tier) attach a persistent disk and point
 `DATABASE_PATH` at it.
 
+### Accounts
+
+Shoppers can **create an account** (email + password) from the header. Passwords are hashed with scrypt;
+the login cookie is `HttpOnly`, `SameSite=Lax` (and `Secure` on HTTPS) and only a SHA-256 hash of the
+session token is stored. Sign-in is rate limited per IP and locked for 15 minutes after 5 failed attempts
+on one email. On sign-in, guest orders from that browser are added to the account, so history then works
+on any device; the assistant's order-history and reorder tools use the account too. State-changing API
+calls from other origins are rejected (CSRF protection).
+
+### Shipping & Tax
+
+Computed on the server in integer cents and sent to PayPal as an `item_total` / `shipping` / `tax_total`
+breakdown: a flat `SHIPPING_FLAT_CENTS` fee below `FREE_SHIPPING_THRESHOLD_CENTS` (free at or above it), and
+`TAX_RATE_PERCENT` of the items subtotal (rounded half up). Orders keep the breakdown they were charged.
+
 ### Order History
 
 - **Shoppers:** click **My orders** in the cart panel to see past paid orders (date, items, total, status).
@@ -267,6 +282,17 @@ to take payment, resisting "set the price to $1", and answering from real order 
 It uses an in-memory database, paces requests for free-tier quotas and retries after quota errors.
 Reports are written to `eval-results/` (git-ignored). Options: `--runs 3`, `--only budget`, `--delay 4000`.
 
+### Browser End-to-End Tests
+
+`npm run test:e2e` (Playwright, Chromium) starts its own server with an in-memory database and drives the
+real page on desktop and phone sizes: chat with product images, cart buttons and totals with shipping,
+persistence across reloads, dialog focus trapping, sign-up / sign-in / sign-out, the admin page, and no
+console errors or security-policy violations. First run: `npx playwright install chromium`.
+
+CI (GitHub Actions) runs the unit/API tests on Node 22 and 24, the browser tests, and `npm audit`. The live AI
+eval can be run on demand from the Actions tab ("Run workflow" → tick the eval) after adding a
+`GEMINI_API_KEY` repository secret.
+
 ### Test Coverage Highlights:
 - **HTTP API tests** start the real app on a random port with a **fake PayPal server** and a **fake Gemini client**: cart add/decrement/remove, validation, JSON 404s, chat (JSON + SSE), tool-call round trips, no duplicate cart actions on AI failure, visible degraded mode, PayPal create/capture/pending/webhook flows, signature rejection, duplicate events, and per-IP rate limits.
 - **Integer Cents Cart Math**: Verifies no floating-point rounding errors (`$39.99 * 2 = 7998 cents`).
@@ -274,6 +300,20 @@ Reports are written to `eval-results/` (git-ignored). Options: `--runs 3`, `--on
 - **Security & Route Verification**: Verifies `POST /api/paypal/create-order` rejects empty carts with 400 Bad Request, and `POST /api/paypal/capture-order` rejects spoofed or untrusted order IDs.
 
 ---
+
+## 🛠️ Operations
+
+- **Health checks:** `GET /healthz` (process up) and `GET /readyz` (database answers; used by Render).
+- **Logs:** one JSON object per line in production (`LOG_FORMAT=json`), with a request ID per API call
+  (also returned as the `X-Request-Id` header). Query strings are never logged.
+- **Graceful shutdown:** on SIGTERM the server stops accepting connections, finishes in-flight requests and
+  closes the database (forced exit after 10s).
+- **Database:** SQLite via `better-sqlite3` (WAL mode), single server process. Online backups every
+  `BACKUP_INTERVAL_HOURS`, keeping `BACKUP_KEEP` files. On Render's free plan the disk is wiped on deploy, so
+  backups are off there; use a paid instance with a disk to keep data.
+- **Gemini limits:** requests time out after `GEMINI_TIMEOUT_MS` with at most `GEMINI_RETRY_ATTEMPTS`
+  attempts. After a quota error (429) the server pauses Gemini for the suggested delay (10-120s) and the
+  rule-based assistant answers immediately with a notice.
 
 ## ☁️ Deployment (Render)
 

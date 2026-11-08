@@ -12,7 +12,8 @@ services:
     plan: free
     buildCommand: npm ci --omit=dev
     startCommand: npm start
-    healthCheckPath: /healthz
+    # Readiness: the app is up AND the database answers
+    healthCheckPath: /readyz
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
@@ -28,6 +29,20 @@ services:
         value: low
       - key: MOCK_AI
         value: 'false'
+      - key: NODE_ENV
+        value: production
+      - key: LOG_FORMAT
+        value: json
+      # Checkout pricing (cents); set TAX_RATE_PERCENT for your jurisdiction
+      - key: SHIPPING_FLAT_CENTS
+        value: 599
+      - key: FREE_SHIPPING_THRESHOLD_CENTS
+        value: 5000
+      - key: TAX_RATE_PERCENT
+        value: 0
+      # Backups only help on a persistent disk (paid plan); the free filesystem is wiped on deploy
+      - key: BACKUP_INTERVAL_HOURS
+        value: 0
       # Secrets: entered in the Render dashboard, never committed
       - key: GEMINI_API_KEY
         sync: false

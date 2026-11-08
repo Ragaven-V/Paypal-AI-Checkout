@@ -8,7 +8,8 @@
     "start": "node server.js",
     "test": "node --test \"test/**/*.test.js\"",
     "test:live": "node --test test/gemini.live.test.js",
-    "eval": "node scripts/eval-ai.mjs"
+    "eval": "node scripts/eval-ai.mjs",
+    "test:e2e": "playwright test"
   },
   "keywords": [
     "paypal",
@@ -26,6 +27,9 @@
     "express": "^5.3.0"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0"
   }
 }

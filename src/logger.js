@@ -61,12 +61,14 @@ export function requestLogger(req, res, next) {
   res.setHeader('X-Request-Id', req.id);
 
   if (!req.path.startsWith('/api/')) return next();
+  // Captured now: routers rewrite req.path. Path only, since query strings can carry IDs.
+  const path = req.originalUrl.split('?')[0];
   const started = process.hrtime.bigint();
   res.on('finish', () => {
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
     // Path only (no query string): queries can carry session/shopper IDs
-    log[level]('request', { requestId: req.id, method: req.method, path: req.path, status: res.statusCode, ms: Math.round(ms) });
+    log[level]('request', { requestId: req.id, method: req.method, path, status: res.statusCode, ms: Math.round(ms) });
   });
   next();
 }

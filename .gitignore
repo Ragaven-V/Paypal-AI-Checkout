@@ -13,3 +13,7 @@ data/
 
 # AI eval reports
 eval-results/
+
+# Playwright output
+test-results/
+playwright-report/
