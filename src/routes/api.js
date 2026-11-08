@@ -23,7 +23,13 @@ export function createApiRouter({ chatLimiter }) {
       // true when the live AI path is failing and chat is answered by the fallback assistant
       aiDegraded: isAiEnabled() && aiHealth.ok === false,
       aiLastError: isAiEnabled() && aiHealth.ok === false ? aiHealth.lastError : null,
-      modelName: config.geminiModel
+      modelName: config.geminiModel,
+      // Lets the cart show shipping/tax instantly; the server still computes the real totals
+      pricing: {
+        shippingFlatCents: config.shippingFlatCents,
+        freeShippingThresholdCents: config.freeShippingThresholdCents,
+        taxRatePercent: config.taxRatePercent
+      }
     });
   });
 

@@ -71,7 +71,14 @@ const lower = (s) => s.toLowerCase();
 function inventedPrices(reply, cart, extra = []) {
   const allowed = new Set(catalog.map(p => p.price.toFixed(2)));
   for (const i of cart?.items || []) allowed.add((i.subtotalInCents / 100).toFixed(2));
-  if (cart) allowed.add((cart.totalCents / 100).toFixed(2));
+  if (cart) {
+    for (const cents of [cart.totalCents, cart.subtotalCents, cart.shippingCents, cart.taxCents, cart.freeShippingRemainingCents]) {
+      if (Number.isFinite(cents)) allowed.add((cents / 100).toFixed(2));
+    }
+  }
+  // Store pricing rules the assistant may quote
+  allowed.add((config.shippingFlatCents / 100).toFixed(2));
+  allowed.add((config.freeShippingThresholdCents / 100).toFixed(2));
   extra.forEach(v => allowed.add(Number(v).toFixed(2)));
   const found = [...reply.matchAll(/\$\s?(\d+(?:\.\d{1,2})?)/g)].map(m => Number(m[1]).toFixed(2));
   return found.filter(v => !allowed.has(v));

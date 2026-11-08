@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { DatabaseSync } from 'node:sqlite';
+import Database from 'better-sqlite3';
 import { setTestEnv, listen, api, createFakePayPal, createFakeGemini } from './helpers.js';
 
 setTestEnv({ ADMIN_TOKEN: 'test-admin-secret' });
@@ -206,7 +206,7 @@ test('database migration adds history columns to an existing database', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-checkout-migrate-'));
   const file = path.join(dir, 'old.db');
   // Schema as shipped before order history existed, with one old order
-  const old = new DatabaseSync(file);
+  const old = new Database(file);
   old.exec(`CREATE TABLE orders (order_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, items_json TEXT NOT NULL,
     total_cents INTEGER NOT NULL, total_formatted TEXT NOT NULL, status TEXT NOT NULL, capture_id TEXT,
     settled INTEGER NOT NULL DEFAULT 0, webhook_confirmed INTEGER NOT NULL DEFAULT 0,

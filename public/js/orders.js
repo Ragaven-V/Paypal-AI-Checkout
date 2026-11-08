@@ -32,6 +32,15 @@ function renderOrder(order, dateFmt) {
     lines.appendChild(li);
   }
 
+  // Shipping/tax rows only when they were charged
+  for (const [label, value] of [['Shipping', order.shipping], ['Tax', order.tax]]) {
+    if (value && value !== 'FREE' && value !== '$0.00') {
+      const li = el('li');
+      li.append(el('span', '', label), el('span', '', value));
+      lines.appendChild(li);
+    }
+  }
+
   const total = el('div', 'order-total');
   total.append(el('span', '', 'Total'), el('span', '', `${order.amount} USD`));
 

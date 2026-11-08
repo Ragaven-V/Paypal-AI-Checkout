@@ -1209,3 +1209,11 @@ main {
     transition-duration: 0.01ms !important;
   }
 }
+
+.free-shipping-hint {
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--primary);
+  font-weight: 600;
+  text-align: center;
+}

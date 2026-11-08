@@ -3,10 +3,23 @@ import { state, formatCents } from './state.js';
 import { $, el, showToast } from './dom.js';
 import { getJSON, postJSON } from './api.js';
 
+// Same pricing rules as the server (src/cart.js priceCart); only used for the instant optimistic view
 function recalc(cart) {
-  cart.totalCents = cart.items.reduce((n, it) => n + it.subtotalInCents, 0);
+  const pricing = state.config.pricing || { shippingFlatCents: 0, freeShippingThresholdCents: 0, taxRatePercent: 0 };
+  const subtotal = cart.items.reduce((n, it) => n + it.subtotalInCents, 0);
+  const free = subtotal === 0 || subtotal >= pricing.freeShippingThresholdCents;
+  const shipping = free ? 0 : pricing.shippingFlatCents;
+  const tax = Math.round((subtotal * Math.round(pricing.taxRatePercent * 100)) / 10000);
   cart.itemCount = cart.items.reduce((n, it) => n + it.quantity, 0);
+  cart.subtotalCents = subtotal;
+  cart.shippingCents = shipping;
+  cart.taxCents = tax;
+  cart.totalCents = subtotal + shipping + tax;
+  cart.subtotalFormatted = formatCents(subtotal);
+  cart.shippingFormatted = shipping === 0 ? 'FREE' : formatCents(shipping);
+  cart.taxFormatted = formatCents(tax);
   cart.totalFormatted = formatCents(cart.totalCents);
+  cart.freeShippingRemainingCents = free ? 0 : pricing.freeShippingThresholdCents - subtotal;
 }
 
 function renderEmpty() {
@@ -65,8 +78,18 @@ function renderItem(item) {
 export function renderCart(cart) {
   state.cart = cart;
   $('cart-count').textContent = `${cart.itemCount} ${cart.itemCount === 1 ? 'item' : 'items'}`;
-  $('summary-subtotal').textContent = cart.totalFormatted;
+  $('summary-subtotal').textContent = cart.subtotalFormatted ?? cart.totalFormatted;
+  const shipping = $('summary-shipping');
+  shipping.textContent = cart.shippingFormatted ?? 'FREE';
+  shipping.classList.toggle('summary-free', !cart.shippingCents);
+  const rate = state.config.pricing?.taxRatePercent || 0;
+  $('summary-tax-label').textContent = rate ? `Tax (${rate}%)` : 'Tax';
+  $('summary-tax').textContent = cart.taxFormatted ?? '$0.00';
   $('summary-total').textContent = cart.totalFormatted;
+
+  const hint = $('free-shipping-hint');
+  hint.hidden = !(cart.itemCount > 0 && cart.freeShippingRemainingCents > 0);
+  hint.textContent = hint.hidden ? '' : `Add ${formatCents(cart.freeShippingRemainingCents)} more for free shipping`;
   const list = $('cart-items');
   list.replaceChildren(...(cart.items?.length ? cart.items.map(renderItem) : [renderEmpty()]));
 }

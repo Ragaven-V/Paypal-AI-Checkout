@@ -63,14 +63,18 @@ export async function createPayPalOrder(session, { shopperId = null } = {}) {
     throw httpError('Your cart is empty. Please add items before checking out.', 400);
   }
 
-  const total = (summary.totalCents / 100).toFixed(2);
+  const usd = (cents) => ({ currency_code: 'USD', value: (cents / 100).toFixed(2) });
   const purchaseUnit = {
     reference_id: session.id,
     description: 'Ask & Buy Order Checkout',
     amount: {
-      currency_code: 'USD',
-      value: total,
-      breakdown: { item_total: { currency_code: 'USD', value: total } }
+      ...usd(summary.totalCents),
+      // PayPal checks that item_total + shipping + tax_total equals the amount
+      breakdown: {
+        item_total: usd(summary.subtotalCents),
+        shipping: usd(summary.shippingCents),
+        tax_total: usd(summary.taxCents)
+      }
     },
     items: summary.items.map(item => ({
       name: item.name.slice(0, 127),
@@ -103,6 +107,9 @@ export async function createPayPalOrder(session, { shopperId = null } = {}) {
     items: new Map(summary.items.map(i => [i.id, i.quantity])),
     totalCents: summary.totalCents,
     totalFormatted: summary.totalFormatted,
+    subtotalCents: summary.subtotalCents,
+    shippingCents: summary.shippingCents,
+    taxCents: summary.taxCents,
     status: order.status || 'CREATED'
   });
   return order;

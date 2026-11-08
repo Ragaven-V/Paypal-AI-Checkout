@@ -1,11 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import { DatabaseSync } from 'node:sqlite';
+import Database from 'better-sqlite3';
 import { config } from './config.js';
 
 /**
- * Durable order + webhook-event store on Node's built-in SQLite (node:sqlite, Node >= 22.13).
- * DATABASE_PATH: file path (default ./data/ai-checkout.db) or ':memory:' (used by tests).
+ * Durable store (orders, webhook events, sessions, carts, chats, users) on SQLite via the
+ * stable better-sqlite3 driver. DATABASE_PATH: file path (default ./data/ai-checkout.db)
+ * or ':memory:' (used by tests). One server process owns the file (WAL mode).
  */
 let db = null;
 
@@ -73,8 +74,11 @@ export function getDb() {
   if (file !== ':memory:') {
     fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   }
-  db = new DatabaseSync(file);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+  db = new Database(file);
+  db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
+  db.pragma('foreign_keys = ON');
+  db.pragma('synchronous = NORMAL');
   db.exec(SCHEMA);
   migrate(db);
   return db;
@@ -91,7 +95,17 @@ function migrate(database) {
     // Line items as charged: [{ id, name, quantity, priceInCents, subtotalInCents }]
     database.exec('ALTER TABLE orders ADD COLUMN lines_json TEXT');
   }
+  if (!columns.has('subtotal_cents')) {
+    // Checkout breakdown (items, shipping, tax); total_cents is the grand total charged
+    database.exec('ALTER TABLE orders ADD COLUMN subtotal_cents INTEGER');
+    database.exec('ALTER TABLE orders ADD COLUMN shipping_cents INTEGER NOT NULL DEFAULT 0');
+    database.exec('ALTER TABLE orders ADD COLUMN tax_cents INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columns.has('user_id')) {
+    database.exec('ALTER TABLE orders ADD COLUMN user_id INTEGER');
+  }
   database.exec('CREATE INDEX IF NOT EXISTS orders_shopper_idx ON orders (shopper_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS orders_user_idx ON orders (user_id)');
 }
 
 export function closeDb() {
@@ -101,12 +115,42 @@ export function closeDb() {
   }
 }
 
+// Readiness probe: true when the database answers a trivial query
+export function isDbHealthy() {
+  try {
+    return getDb().prepare('SELECT 1 AS ok').get().ok === 1;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Online backup to <dir>/ai-checkout-<timestamp>.db, keeping the newest `keep` files.
+ * Safe while the app is serving requests (SQLite backup API).
+ */
+export async function backupDatabase(dir, keep = 7) {
+  if (config.databasePath === ':memory:') return null;
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `ai-checkout-${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
+  await getDb().backup(file);
+  const backups = fs.readdirSync(dir).filter(f => /^ai-checkout-.*\.db$/.test(f)).sort();
+  for (const old of backups.slice(0, Math.max(0, backups.length - keep))) {
+    fs.rmSync(path.join(dir, old), { force: true });
+  }
+  return file;
+}
+
 const toRecord = (row) => row && {
   orderId: row.order_id,
   sessionId: row.session_id,
   shopperId: row.shopper_id ?? null,
   items: new Map(JSON.parse(row.items_json)),
   lines: row.lines_json ? JSON.parse(row.lines_json) : null,
+  userId: row.user_id ?? null,
+  // Older orders have no breakdown: their total was the items subtotal
+  subtotalCents: row.subtotal_cents ?? row.total_cents,
+  shippingCents: row.shipping_cents ?? 0,
+  taxCents: row.tax_cents ?? 0,
   totalCents: row.total_cents,
   totalFormatted: row.total_formatted,
   status: row.status,
@@ -121,12 +165,14 @@ export const orderStore = {
   insert(record) {
     const now = Date.now();
     getDb().prepare(`
-      INSERT INTO orders (order_id, session_id, shopper_id, items_json, lines_json, total_cents, total_formatted,
+      INSERT INTO orders (order_id, session_id, shopper_id, user_id, items_json, lines_json, total_cents,
+                          total_formatted, subtotal_cents, shipping_cents, tax_cents,
                           status, capture_id, settled, webhook_confirmed, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
-    `).run(record.orderId, record.sessionId, record.shopperId ?? null, JSON.stringify([...record.items]),
-      record.lines ? JSON.stringify(record.lines) : null, record.totalCents, record.totalFormatted,
-      record.status, record.captureId ?? null, now, now);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+    `).run(record.orderId, record.sessionId, record.shopperId ?? null, record.userId ?? null,
+      JSON.stringify([...record.items]), record.lines ? JSON.stringify(record.lines) : null,
+      record.totalCents, record.totalFormatted, record.subtotalCents ?? record.totalCents,
+      record.shippingCents ?? 0, record.taxCents ?? 0, record.status, record.captureId ?? null, now, now);
     return this.get(record.orderId);
   },
 

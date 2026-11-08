@@ -24,5 +24,31 @@ export const config = {
   // Express "trust proxy" setting, needed behind a reverse proxy so req.ip is the real client IP.
   get trustProxy() { return process.env.TRUST_PROXY || ''; },
   get rateLimitChatPerMin() { return Number(process.env.RATE_LIMIT_CHAT_PER_MIN) || 20; },
-  get rateLimitApiPerMin() { return Number(process.env.RATE_LIMIT_API_PER_MIN) || 120; }
+  get rateLimitApiPerMin() { return Number(process.env.RATE_LIMIT_API_PER_MIN) || 120; },
+  get rateLimitAuthPerMin() { return Number(process.env.RATE_LIMIT_AUTH_PER_MIN) || 10; },
+
+  // Database backups (file databases only). Empty BACKUP_DIR = "<database folder>/backups".
+  get backupDir() { return process.env.BACKUP_DIR || ''; },
+  get backupIntervalHours() { return numberOr(process.env.BACKUP_INTERVAL_HOURS, 6); },
+  get backupKeep() { return numberOr(process.env.BACKUP_KEEP, 7); },
+
+  // Checkout pricing, all in integer cents. Shipping is free at or above the threshold.
+  get shippingFlatCents() { return numberOr(process.env.SHIPPING_FLAT_CENTS, 599); },
+  get freeShippingThresholdCents() { return numberOr(process.env.FREE_SHIPPING_THRESHOLD_CENTS, 5000); },
+  // Sales tax percentage applied to the items subtotal (e.g. 8.25). 0 = no tax.
+  get taxRatePercent() { return numberOr(process.env.TAX_RATE_PERCENT, 0); },
+
+  // Accounts: login session lifetime and whether cookies need HTTPS (auto: secure when served over HTTPS)
+  get sessionDays() { return numberOr(process.env.AUTH_SESSION_DAYS, 30); },
+
+  // Logging: "json" (one JSON object per line, for hosting platforms) or "pretty"
+  get logFormat() { return process.env.LOG_FORMAT || (process.env.NODE_ENV === 'production' ? 'json' : 'pretty'); },
+  get logLevel() { return process.env.LOG_LEVEL || 'info'; }
 };
+
+// Numeric env var with a default; allows an explicit 0
+function numberOr(value, fallback) {
+  if (value === undefined || value === '') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
