@@ -10,6 +10,29 @@ export function el(tag, className, text) {
   return node;
 }
 
+/**
+ * Chat text with the little Markdown the assistant uses: **bold**, *italic* and "- " / "* "
+ * bullets. Built from text nodes, <strong> and <em> only, so replies can never inject HTML.
+ */
+const INLINE_MD = /\*\*(.+?)\*\*|(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])/g;
+
+export function richText(text) {
+  const fragment = document.createDocumentFragment();
+  const lines = String(text ?? '').split('\n');
+  lines.forEach((rawLine, i) => {
+    const line = rawLine.replace(/^(\s*)[-*]\s+/, '$1• ');
+    let last = 0;
+    for (const match of line.matchAll(INLINE_MD)) {
+      if (match.index > last) fragment.appendChild(document.createTextNode(line.slice(last, match.index)));
+      fragment.appendChild(match[1] !== undefined ? el('strong', '', match[1]) : el('em', '', match[2]));
+      last = match.index + match[0].length;
+    }
+    if (last < line.length) fragment.appendChild(document.createTextNode(line.slice(last)));
+    if (i < lines.length - 1) fragment.appendChild(document.createTextNode('\n'));
+  });
+  return fragment;
+}
+
 export function showToast(message, type = 'info') {
   const toast = el('div', `toast ${type}`, message);
   $('toast-container').appendChild(toast);

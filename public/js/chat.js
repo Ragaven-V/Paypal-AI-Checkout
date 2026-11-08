@@ -1,6 +1,6 @@
 // Chat: message rendering, SSE streaming from /api/chat, and restoring the saved transcript.
 import { state } from './state.js';
-import { $, el, showToast } from './dom.js';
+import { $, el, richText, showToast } from './dom.js';
 import { getJSON } from './api.js';
 import { renderProductCards } from './products.js';
 import { renderCart, addItemToCart } from './cart.js';
@@ -20,7 +20,9 @@ function avatar(role) {
 function createMessage(role, text = '') {
   const row = el('div', `message-row ${role}`);
   const wrapper = el('div', 'bubble-wrapper');
-  const bubble = el('div', 'message-bubble', text);
+  const bubble = el('div', 'message-bubble');
+  // Assistant replies may use **bold** and bullets; the shopper's own words are shown as typed
+  bubble.appendChild(role === 'assistant' ? richText(text) : document.createTextNode(text));
   const label = el('span', 'visually-hidden', role === 'user' ? 'You said: ' : 'Assistant: ');
   bubble.prepend(label);
   const grid = el('div', 'product-grid');
@@ -144,7 +146,7 @@ export async function sendMessage(rawText) {
 
         if (event.type === 'chunk' && event.text) {
           reply += event.text;
-          msg.bubble.replaceChildren(msg.label, document.createTextNode(reply), cursor);
+          msg.bubble.replaceChildren(msg.label, richText(reply), cursor);
           scrollToEnd();
         } else if (event.type === 'products' && Array.isArray(event.products)) {
           renderProductCards(msg.grid, event.products, addItemToCart);

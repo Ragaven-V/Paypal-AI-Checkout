@@ -24,6 +24,10 @@ test('chat recommends products with images, and they can be added to the cart', 
   const addButtons = log.getByRole('button', { name: /^Add .* to cart$/ });
   await expect(addButtons.first()).toBeVisible();
 
+  // **bold** in replies is shown as bold text, never as raw asterisks
+  await expect(log.locator('.message-bubble strong').first()).toBeVisible();
+  expect(await log.locator('.message-bubble').allInnerTexts()).not.toContainEqual(expect.stringContaining('**'));
+
   const images = log.locator('img.product-image');
   await expect(images.first()).toBeVisible();
   expect(await images.first().evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
