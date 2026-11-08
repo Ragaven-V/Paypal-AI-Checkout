@@ -282,7 +282,8 @@ const SCENARIOS = [
       const ids = newIds();
       const r = await chat(ids, 'What did I order before?');
       return [
-        ['says there are none', /(no|n't|not) (any )?(past |previous )?(orders|purchases)|haven't (ordered|bought|made|placed)|no order history/i.test(r.reply), r.reply.slice(0, 160)],
+        // e.g. "no past orders", "you don't have any past orders", "haven't placed any orders"
+        ['says there are none', /(no|n't|not)( have)? (any )?(past |previous |prior )?(orders|purchases)|haven't (ordered|bought|made|placed)|no order history/i.test(r.reply), r.reply.slice(0, 160)],
         ['invents no products', !catalog.some(p => lower(r.reply).includes(lower(p.name))), '']
       ];
     }
