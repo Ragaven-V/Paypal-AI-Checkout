@@ -64,6 +64,11 @@ test('HTTP: cart and routing', async (t) => {
     assert.equal(res.status, 404);
   });
 
+  await t.test('POST to a page path returns 404, not the SPA (catches a wrong webhook URL)', async () => {
+    const res = await http.post('/', { event_type: 'PAYMENT.CAPTURE.COMPLETED' });
+    assert.equal(res.status, 404);
+  });
+
   await t.test('non-API paths still serve the app', async () => {
     const res = await http.get('/some/page');
     assert.equal(res.status, 200);

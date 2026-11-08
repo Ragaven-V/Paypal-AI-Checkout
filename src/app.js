@@ -44,8 +44,12 @@ export function createApp() {
     next(err);
   });
 
-  // SPA fallback
+  // SPA fallback for page loads only. Other methods get a 404 so a misconfigured
+  // webhook URL (e.g. PayPal posting to "/") fails visibly instead of returning 200.
   app.use((req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return res.status(404).json({ error: `Not found: ${req.method} ${req.originalUrl}` });
+    }
     res.sendFile(path.join(publicDir, 'index.html'));
   });
 
