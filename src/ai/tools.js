@@ -1,6 +1,8 @@
 import { Type } from '@google/genai';
 import { executeSearchProducts } from '../catalog.js';
 import { executeAddToCart, executeRemoveFromCart, executeViewCart, getCartSummary } from '../cart.js';
+import { catalogMap } from '../catalog.js';
+import { executeGetOrderHistory, executeReorder } from '../orders.js';
 
 const searchProductsDeclaration = {
   name: 'search_products',
@@ -52,13 +54,38 @@ const viewCartDeclaration = {
   parameters: { type: Type.OBJECT, properties: {} }
 };
 
+const getOrderHistoryDeclaration = {
+  name: 'get_order_history',
+  description: "Get the shopper's past orders (newest first) with date, status, items and total. Use when they ask what they bought before, about a previous order or payment status, or for ideas based on past purchases.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      limit: { type: Type.INTEGER, description: 'How many recent orders to return (1 to 10). Defaults to 5.' }
+    }
+  }
+};
+
+const reorderDeclaration = {
+  name: 'reorder',
+  description: "Add all items from one of the shopper's past orders back into the cart at current prices. Use when they ask to buy or order the same again. Get the order_id from get_order_history first.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      order_id: { type: Type.STRING, description: 'The PayPal order ID from get_order_history.' }
+    },
+    required: ['order_id']
+  }
+};
+
 export const GEMINI_TOOLS = [
   {
     functionDeclarations: [
       searchProductsDeclaration,
       addToCartDeclaration,
       removeFromCartDeclaration,
-      viewCartDeclaration
+      viewCartDeclaration,
+      getOrderHistoryDeclaration,
+      reorderDeclaration
     ]
   }
 ];
@@ -86,6 +113,14 @@ export function runToolCall(session, call, onEvent = () => {}) {
   } else if (name === 'view_cart') {
     output = executeViewCart(session);
     onEvent({ type: 'cart', cart: getCartSummary(session) });
+  } else if (name === 'get_order_history') {
+    output = executeGetOrderHistory(session, args?.limit);
+  } else if (name === 'reorder') {
+    output = executeReorder(session, args?.order_id, executeAddToCart);
+    if (output.success) {
+      onEvent({ type: 'products', products: output.added.map(a => catalogMap.get(a.product_id)).filter(Boolean) });
+      onEvent({ type: 'cart', cart: getCartSummary(session) });
+    }
   } else {
     output = { error: `Unknown tool "${name}"` };
   }

@@ -86,3 +86,60 @@ export function isAdminRequest(req) {
   const b = crypto.createHash('sha256').update(expected).digest();
   return crypto.timingSafeEqual(a, b) && given.length > 0;
 }
+
+// ---- Assistant tools -------------------------------------------------------
+
+// Orders belonging to the session's shopper (or, without a shopper ID, the session itself)
+function ordersForSession(session) {
+  return orderStore.listForShopper(session.shopperId || '', session.id);
+}
+
+/**
+ * Tool: the shopper's recent orders, newest first. Unpaid checkouts are left out so the
+ * assistant doesn't present abandoned PayPal popups as purchases.
+ */
+export function executeGetOrderHistory(session, limit = 5) {
+  const max = Math.max(1, Math.min(10, Math.floor(Number(limit) || 5)));
+  const orders = ordersForSession(session)
+    .filter(r => r.status !== 'CREATED')
+    .slice(0, max)
+    .map(toPublicOrder)
+    .map(o => ({
+      order_id: o.orderID,
+      date: o.createdAt.slice(0, 10),
+      status: o.statusLabel,
+      total: o.amount,
+      items: o.lines.map(l => ({ product_id: l.id, name: l.name, quantity: l.quantity, price: l.price }))
+    }));
+  return orders.length
+    ? { success: true, orders }
+    : { success: true, orders: [], message: 'This shopper has no past orders yet.' };
+}
+
+/**
+ * Tool: put the items of one of the shopper's past orders back into the cart (at today's
+ * prices; the shopper still pays with the PayPal button).
+ */
+export function executeReorder(session, orderId, addToCart) {
+  const record = typeof orderId === 'string' ? orderStore.get(orderId) : null;
+  const owns = record && ((session.shopperId && record.shopperId === session.shopperId) || record.sessionId === session.id);
+  if (!owns) {
+    return { success: false, error: `Order "${orderId}" was not found in this shopper's history.` };
+  }
+
+  const added = [];
+  const unavailable = [];
+  for (const line of linesFor(record)) {
+    const result = addToCart(session, line.id, line.quantity);
+    if (result.success) added.push({ product_id: line.id, name: line.name, quantity: line.quantity });
+    else unavailable.push(line.name);
+  }
+  return {
+    success: added.length > 0,
+    message: added.length
+      ? `Added ${added.length} item(s) from order ${record.orderId} to the cart at current prices.`
+      : 'None of the items from that order are available any more.',
+    added,
+    unavailable
+  };
+}

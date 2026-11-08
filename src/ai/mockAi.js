@@ -1,5 +1,9 @@
 import { catalog, executeSearchProducts } from '../catalog.js';
 import { getCartSummary, executeAddToCart, executeRemoveFromCart } from '../cart.js';
+import { executeGetOrderHistory, executeReorder } from '../orders.js';
+
+const REORDER_RE = /\b(re-?order|(buy|order|get) (it|that|them|those|the same( things?)?|my last order) again|same (as|order as) (last time|before))\b/;
+const HISTORY_RE = /\b(order history|my orders|past orders|previous orders?|last orders?|what did i (buy|order|purchase)|bought before|did my (payment|order) go through)\b/;
 
 /**
  * Rule-based mock assistant, used when Gemini is not configured or a request fails.
@@ -34,6 +38,37 @@ export function runMockAi(session, userMessage) {
   if (text.includes('who are you') || text.includes('what can you do') || text.includes('how do you work')) {
     return {
       reply: "I'm Ask & Buy, your AI shopping assistant! I can recommend products based on your budget and tastes, manage your cart (add or remove items), and help you check out with PayPal.",
+      products: [],
+      cart: getCartSummary(session)
+    };
+  }
+
+  // Reorder: put the most recent paid order back in the cart
+  if (REORDER_RE.test(cleanText)) {
+    const history = executeGetOrderHistory(session, 1);
+    const last = history.orders[0];
+    if (!last) {
+      return { reply: "You don't have any past orders yet, so there's nothing to reorder. Tell me what you're looking for!", products: [], cart: getCartSummary(session) };
+    }
+    const result = executeReorder(session, last.order_id, executeAddToCart);
+    const products = result.added.map(a => catalog.find(p => p.id === a.product_id)).filter(Boolean);
+    const summary = getCartSummary(session);
+    return {
+      reply: `I've put the items from your order on ${last.date} back in your cart at today's prices: ${result.added.map(a => `${a.quantity}x ${a.name}`).join(', ')}. Your cart total is ${summary.totalFormatted}. Click the PayPal button when you're ready to pay.`,
+      products,
+      cart: summary
+    };
+  }
+
+  // Order history questions
+  if (HISTORY_RE.test(cleanText)) {
+    const history = executeGetOrderHistory(session, 3);
+    if (!history.orders.length) {
+      return { reply: "You haven't completed any orders yet. Once you pay with PayPal, your orders will show up here and under \"My orders\".", products: [], cart: getCartSummary(session) };
+    }
+    const lines = history.orders.map(o => `• ${o.date}: ${o.items.map(i => `${i.quantity}x ${i.name}`).join(', ')} (${o.total}, ${o.status})`).join('\n');
+    return {
+      reply: `Here are your recent orders:\n${lines}\n\nWant me to put any of them back in your cart? Just say "order the same again".`,
       products: [],
       cart: getCartSummary(session)
     };

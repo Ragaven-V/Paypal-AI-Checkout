@@ -4,12 +4,13 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
-import { setTestEnv, listen, api, createFakePayPal } from './helpers.js';
+import { setTestEnv, listen, api, createFakePayPal, createFakeGemini } from './helpers.js';
 
 setTestEnv({ ADMIN_TOKEN: 'test-admin-secret' });
 const { createApp } = await import('../src/app.js');
 const { catalogMap } = await import('../src/catalog.js');
 const { getDb, closeDb } = await import('../src/db.js');
+const { setAiClientForTesting } = await import('../src/ai/gemini.js');
 
 const SHOPPER_A = 'shop_aaaaaaaa-1111-2222-3333-444444444444';
 const SHOPPER_B = 'shop_bbbbbbbb-1111-2222-3333-444444444444';
@@ -91,6 +92,60 @@ test('Order history and admin', async (t) => {
     } finally {
       product.price = original;
     }
+  });
+
+  await t.test("AI: get_order_history returns only this shopper's paid orders", async () => {
+    const fake = createFakeGemini([
+      [[{ functionCall: { name: 'get_order_history', args: {}, id: 'h1' } }]],
+      [[{ text: 'You bought a grinder and a mug.' }]]
+    ]);
+    setAiClientForTesting(fake);
+    const res = await http.post('/api/chat', { sessionId: 'ai_hist', shopperId: SHOPPER_A, message: 'what did I buy before?' });
+    assert.equal(res.json.reply, 'You bought a grinder and a mug.');
+
+    const output = fake.calls.messages[1][0].functionResponse.response.output;
+    assert.equal(output.orders.length, 2);
+    assert.ok(output.orders.every(o => o.status === 'Paid'));
+    assert.deepEqual(output.orders[1].items.map(i => i.product_id), ['p1']);
+    setAiClientForTesting(null);
+  });
+
+  await t.test('AI: reorder puts a past order back in the cart', async () => {
+    const history = await http.get(`/api/orders?shopperId=${SHOPPER_A}`);
+    const firstOrder = history.json.orders.at(-1).orderID; // the 2x grinder order
+    setAiClientForTesting(createFakeGemini([
+      [[{ functionCall: { name: 'reorder', args: { order_id: firstOrder }, id: 'r1' } }]],
+      [[{ text: 'Done, the grinders are back in your cart.' }]]
+    ]));
+    const res = await http.post('/api/chat', { sessionId: 'ai_reorder', shopperId: SHOPPER_A, message: 'order the same again' });
+    assert.deepEqual(res.json.cart.items.map(i => [i.id, i.quantity]), [['p1', 2]]);
+    setAiClientForTesting(null);
+  });
+
+  await t.test("AI: reorder refuses another shopper's order", async () => {
+    const history = await http.get(`/api/orders?shopperId=${SHOPPER_A}`);
+    const fake = createFakeGemini([
+      [[{ functionCall: { name: 'reorder', args: { order_id: history.json.orders[0].orderID }, id: 'r2' } }]],
+      [[{ text: 'I could not find that order.' }]]
+    ]);
+    setAiClientForTesting(fake);
+    const res = await http.post('/api/chat', { sessionId: 'ai_thief', shopperId: SHOPPER_B, message: 'reorder that' });
+    assert.equal(res.json.cart.items.length, 0);
+    assert.equal(fake.calls.messages[1][0].functionResponse.response.output.success, false);
+    setAiClientForTesting(null);
+  });
+
+  await t.test('fallback assistant: order history and "order the same again"', async () => {
+    setAiClientForTesting(null);
+    const hist = await http.post('/api/chat', { sessionId: 'mock_hist', shopperId: SHOPPER_A, message: 'what did I buy last time?' });
+    assert.match(hist.json.reply, /recent orders/);
+    assert.match(hist.json.reply, /Precision Burr Coffee Grinder/);
+
+    const again = await http.post('/api/chat', { sessionId: 'mock_again', shopperId: SHOPPER_A, message: 'order the same again' });
+    assert.ok(again.json.cart.items.length > 0, 'latest order is back in the cart');
+
+    const none = await http.post('/api/chat', { sessionId: 'mock_none', shopperId: 'shop_dddddddd-1111-2222-3333-444444444444', message: 'reorder' });
+    assert.match(none.json.reply, /don't have any past orders/);
   });
 
   await t.test('admin: wrong or missing password is rejected', async () => {
