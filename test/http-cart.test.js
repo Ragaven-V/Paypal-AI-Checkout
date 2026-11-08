@@ -75,6 +75,46 @@ test('HTTP: cart and routing', async (t) => {
     assert.match(res.text, /<html/i);
   });
 
+  await t.test('security headers are set on pages and API responses', async () => {
+    const page = await http.get('/');
+    const csp = page.headers.get('content-security-policy');
+    assert.match(csp, /default-src 'self'/);
+    assert.match(csp, /script-src 'self' https:\/\/\*\.paypal\.com/);
+    assert.doesNotMatch(csp.match(/script-src[^;]*/)[0], /unsafe-inline/, 'no inline scripts allowed');
+    assert.match(csp, /frame-ancestors 'none'/);
+    assert.equal(page.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(page.headers.get('x-frame-options'), 'DENY');
+    assert.equal(page.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
+    assert.equal(page.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');
+    assert.equal(page.headers.get('x-powered-by'), null);
+
+    const apiRes = await http.get('/api/catalog');
+    assert.equal(apiRes.headers.get('cache-control'), 'no-store');
+  });
+
+  await t.test('pages contain no inline scripts (required by the CSP)', async () => {
+    for (const path of ['/', '/admin']) {
+      const res = await http.get(path);
+      const inline = res.text.match(/<script(?![^>]*\ssrc=)[^>]*>/g) || [];
+      assert.deepEqual(inline, [], `${path} has inline <script>`);
+      assert.doesNotMatch(res.text, /\son[a-z]+="/, `${path} has inline event handlers`);
+    }
+  });
+
+  await t.test('health check responds', async () => {
+    const res = await http.get('/healthz');
+    assert.equal(res.status, 200);
+    assert.equal(res.json.ok, true);
+  });
+
+  await t.test('static assets: stylesheet, scripts and product images are served', async () => {
+    for (const path of ['/css/app.css', '/js/main.js', '/images/products/p1.svg']) {
+      assert.equal((await http.get(path)).status, 200, path);
+    }
+    const catalog = await http.get('/api/catalog');
+    assert.ok(catalog.json.products.every(p => p.image && p.image.startsWith('/images/products/')));
+  });
+
   await t.test('/api/config never exposes secrets', async () => {
     const res = await http.get('/api/config');
     assert.equal(res.status, 200);

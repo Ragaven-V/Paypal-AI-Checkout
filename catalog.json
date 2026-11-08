@@ -4,96 +4,180 @@
     "name": "Precision Burr Coffee Grinder",
     "price": 39.99,
     "category": "Coffee & Tea",
-    "tags": ["coffee", "grinder", "kitchen", "dad", "gift", "manual"],
-    "description": "Manual stainless steel conical burr coffee grinder with adjustable grind settings for espresso, drip, and French press."
+    "tags": [
+      "coffee",
+      "grinder",
+      "kitchen",
+      "dad",
+      "gift",
+      "manual"
+    ],
+    "description": "Manual stainless steel conical burr coffee grinder with adjustable grind settings for espresso, drip, and French press.",
+    "image": "/images/products/p1.svg"
   },
   {
     "id": "p2",
     "name": "Artisan Ceramic Coffee Mug",
-    "price": 16.50,
+    "price": 16.5,
     "category": "Coffee & Tea",
-    "tags": ["coffee", "mug", "ceramic", "dad", "gift"],
-    "description": "Handcrafted 14oz ceramic mug with heat-resistant ergonomic handle and smooth matte glaze."
+    "tags": [
+      "coffee",
+      "mug",
+      "ceramic",
+      "dad",
+      "gift"
+    ],
+    "description": "Handcrafted 14oz ceramic mug with heat-resistant ergonomic handle and smooth matte glaze.",
+    "image": "/images/products/p2.svg"
   },
   {
     "id": "p3",
     "name": "Cold Brew Coffee Maker (1L)",
     "price": 27.99,
     "category": "Coffee & Tea",
-    "tags": ["coffee", "cold brew", "maker", "gift", "summer"],
-    "description": "Borosilicate glass cold brew pitcher with ultra-fine stainless steel mesh filter and airtight silicone lid."
+    "tags": [
+      "coffee",
+      "cold brew",
+      "maker",
+      "gift",
+      "summer"
+    ],
+    "description": "Borosilicate glass cold brew pitcher with ultra-fine stainless steel mesh filter and airtight silicone lid.",
+    "image": "/images/products/p3.svg"
   },
   {
     "id": "p4",
     "name": "Pour-Over Glass Carafe & Dripper",
-    "price": 24.50,
+    "price": 24.5,
     "category": "Coffee & Tea",
-    "tags": ["coffee", "pourover", "dripper", "glass"],
-    "description": "Heat-resistant pour-over coffee maker with permanent laser-cut reusable stainless steel filter."
+    "tags": [
+      "coffee",
+      "pourover",
+      "dripper",
+      "glass"
+    ],
+    "description": "Heat-resistant pour-over coffee maker with permanent laser-cut reusable stainless steel filter.",
+    "image": "/images/products/p4.svg"
   },
   {
     "id": "p5",
     "name": "Electric Gooseneck Kettle",
-    "price": 49.00,
+    "price": 49,
     "category": "Kitchen & Appliances",
-    "tags": ["coffee", "kettle", "electric", "tea", "dad"],
-    "description": "Precision gooseneck spout electric kettle with rapid boil and auto shutoff for exact pour control."
+    "tags": [
+      "coffee",
+      "kettle",
+      "electric",
+      "tea",
+      "dad"
+    ],
+    "description": "Precision gooseneck spout electric kettle with rapid boil and auto shutoff for exact pour control.",
+    "image": "/images/products/p5.svg"
   },
   {
     "id": "p6",
     "name": "Insulated Stainless Travel Tumbler (20oz)",
-    "price": 22.00,
+    "price": 22,
     "category": "Drinkware",
-    "tags": ["tumbler", "coffee", "travel", "insulated", "dad"],
-    "description": "Double-wall vacuum insulated tumbler that keeps beverages piping hot for 8 hours or iced for 16."
+    "tags": [
+      "tumbler",
+      "coffee",
+      "travel",
+      "insulated",
+      "dad"
+    ],
+    "description": "Double-wall vacuum insulated tumbler that keeps beverages piping hot for 8 hours or iced for 16.",
+    "image": "/images/products/p6.svg"
   },
   {
     "id": "p7",
     "name": "Smart Desk Wireless Charging Pad",
     "price": 19.99,
     "category": "Electronics",
-    "tags": ["tech", "gadget", "charger", "wireless", "desk", "gift"],
-    "description": "15W fast wireless charging pad with sleek aluminum base, temperature protection, and non-slip pad."
+    "tags": [
+      "tech",
+      "gadget",
+      "charger",
+      "wireless",
+      "desk",
+      "gift"
+    ],
+    "description": "15W fast wireless charging pad with sleek aluminum base, temperature protection, and non-slip pad.",
+    "image": "/images/products/p7.svg"
   },
   {
     "id": "p8",
     "name": "Compact Noise-Isolating Earbuds",
     "price": 34.99,
     "category": "Electronics",
-    "tags": ["audio", "earbuds", "music", "bluetooth", "gift"],
-    "description": "Bluetooth 5.3 earbuds with crisp treble, deep bass, and 24-hour total playback with charging case."
+    "tags": [
+      "audio",
+      "earbuds",
+      "music",
+      "bluetooth",
+      "gift"
+    ],
+    "description": "Bluetooth 5.3 earbuds with crisp treble, deep bass, and 24-hour total playback with charging case.",
+    "image": "/images/products/p8.svg"
   },
   {
     "id": "p9",
     "name": "Minimalist Leather Cardholder Wallet",
-    "price": 25.00,
+    "price": 25,
     "category": "Accessories",
-    "tags": ["wallet", "leather", "gift", "dad", "style"],
-    "description": "Slim top-grain leather cardholder with RFID protection and 6 card slots plus central cash pocket."
+    "tags": [
+      "wallet",
+      "leather",
+      "gift",
+      "dad",
+      "style"
+    ],
+    "description": "Slim top-grain leather cardholder with RFID protection and 6 card slots plus central cash pocket.",
+    "image": "/images/products/p9.svg"
   },
   {
     "id": "p10",
     "name": "Aromatherapy Ultrasonic Diffuser",
-    "price": 29.50,
+    "price": 29.5,
     "category": "Home & Wellness",
-    "tags": ["home", "wellness", "diffuser", "relax", "gift"],
-    "description": "Whisper-quiet 300ml ultrasonic essential oil diffuser with soothing 7-color ambient LED lights."
+    "tags": [
+      "home",
+      "wellness",
+      "diffuser",
+      "relax",
+      "gift"
+    ],
+    "description": "Whisper-quiet 300ml ultrasonic essential oil diffuser with soothing 7-color ambient LED lights.",
+    "image": "/images/products/p10.svg"
   },
   {
     "id": "p11",
     "name": "Organic Fair-Trade Espresso Beans (12oz)",
-    "price": 15.00,
+    "price": 15,
     "category": "Coffee & Tea",
-    "tags": ["coffee", "beans", "espresso", "organic", "roast"],
-    "description": "Freshly roasted single-origin whole bean coffee with rich chocolate and caramel notes."
+    "tags": [
+      "coffee",
+      "beans",
+      "espresso",
+      "organic",
+      "roast"
+    ],
+    "description": "Freshly roasted single-origin whole bean coffee with rich chocolate and caramel notes.",
+    "image": "/images/products/p11.svg"
   },
   {
     "id": "p12",
     "name": "Magnetic Knife & Tool Bar (16-inch)",
     "price": 21.99,
     "category": "Kitchen & Home",
-    "tags": ["kitchen", "tools", "knife", "magnetic", "dad"],
-    "description": "Heavy-duty stainless steel magnetic strip for kitchen cutlery and workshop hand tools."
+    "tags": [
+      "kitchen",
+      "tools",
+      "knife",
+      "magnetic",
+      "dad"
+    ],
+    "description": "Heavy-duty stainless steel magnetic strip for kitchen cutlery and workshop hand tools.",
+    "image": "/images/products/p12.svg"
   }
 ]
-

@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { createIpRateLimiter } from './rateLimit.js';
+import { securityHeaders } from './security.js';
 import { createApiRouter } from './routes/api.js';
 import { createPayPalRouter, paypalWebhookHandler } from './routes/paypal.js';
 import { createOrdersRouter } from './routes/orders.js';
@@ -11,6 +12,7 @@ const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 
 
 export function createApp() {
   const app = express();
+  app.disable('x-powered-by');
 
   if (config.trustProxy) {
     // e.g. "1" (one proxy hop), "loopback", or a subnet list; see Express "trust proxy"
@@ -23,6 +25,11 @@ export function createApp() {
   // Admin password attempts: tight limit against guessing
   const adminLimiter = createIpRateLimiter({ name: 'admin', max: 10, message: 'Too many admin attempts. Please wait a minute.' });
   app.locals.rateLimiters = { apiLimiter, chatLimiter, adminLimiter };
+
+  app.use(securityHeaders);
+
+  // Health check for the hosting platform (no DB or external calls)
+  app.get('/healthz', (req, res) => res.json({ ok: true }));
 
   app.use(express.json({ limit: '100kb' }));
   app.use(express.static(publicDir));
