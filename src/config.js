@@ -6,6 +6,8 @@ dotenv.config({ quiet: true });
 export const config = {
   get port() { return Number(process.env.PORT) || 3000; },
   get databasePath() { return process.env.DATABASE_PATH || './data/ai-checkout.db'; },
+  // Password for the /admin orders page; admin is disabled when empty
+  get adminToken() { return process.env.ADMIN_TOKEN || ''; },
 
   get geminiApiKey() { return (process.env.GEMINI_API_KEY || '').trim(); },
   get geminiModel() { return process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'; },

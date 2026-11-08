@@ -964,6 +964,162 @@
     .btn-new-order:hover {
       background: var(--primary-hover);
     }
+
+    /* Order history */
+    .cart-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-orders {
+      background: var(--surface);
+      color: var(--primary);
+      border: 1.5px solid var(--primary);
+      padding: 0.25rem 0.75rem;
+      border-radius: var(--pill);
+      font-size: 0.74rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .btn-orders:hover {
+      background: var(--primary-light);
+    }
+
+    .orders-card {
+      max-width: 560px;
+      max-height: min(80vh, 720px);
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+      padding: 1.5rem;
+    }
+
+    .orders-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .orders-head h2 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .btn-close {
+      background: var(--surface-alt);
+      border: 1px solid var(--surface-border);
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1rem;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .btn-close:hover {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    .orders-list {
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding-right: 0.25rem;
+    }
+
+    .order-item {
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-sm);
+      padding: 0.9rem 1rem;
+      background: var(--surface);
+    }
+
+    .order-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .order-date {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .order-id {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: ui-monospace, Consolas, monospace;
+      word-break: break-all;
+    }
+
+    .status-pill {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--pill);
+      white-space: nowrap;
+      background: var(--surface-alt);
+      color: var(--text-muted);
+    }
+
+    .status-pill.paid { background: #e3f6ec; color: var(--accent-green); }
+    .status-pill.pending { background: #fff4e0; color: var(--accent-amber); }
+    .status-pill.bad { background: #fdecec; color: var(--accent-red); }
+
+    .order-lines {
+      list-style: none;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .order-lines li {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+
+    .order-total {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 0.6rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--surface-border);
+      font-weight: 800;
+      font-size: 0.9rem;
+    }
+
+    .orders-empty {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      padding: 2rem 1rem;
+      line-height: 1.5;
+    }
+
+    .orders-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 0.9rem;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -1057,7 +1213,10 @@
         <div class="cart-title">
           <span>🛒</span> Your Cart
         </div>
-        <span class="cart-count-badge" id="cart-count">0 items</span>
+        <div class="cart-header-actions">
+          <button type="button" class="btn-orders" id="btn-orders">My orders</button>
+          <span class="cart-count-badge" id="cart-count">0 items</span>
+        </div>
       </div>
 
       <!-- Cart Items List -->
@@ -1129,6 +1288,21 @@
     </div>
   </div>
 
+  <!-- Order History Modal -->
+  <div class="modal-backdrop" id="orders-modal" role="dialog" aria-modal="true" aria-labelledby="orders-title">
+    <div class="modal-card orders-card">
+      <div class="orders-head">
+        <h2 id="orders-title">My orders</h2>
+        <button type="button" class="btn-close" id="btn-orders-close" aria-label="Close">✕</button>
+      </div>
+      <div class="orders-list" id="orders-list"></div>
+      <label class="orders-toggle">
+        <input type="checkbox" id="orders-include-unpaid">
+        Show unfinished checkouts
+      </label>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container"></div>
 
@@ -1139,6 +1313,23 @@
     if (!sessionId) {
       sessionId = 'sess_' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 12));
       sessionStorage.setItem('ai_checkout_session', sessionId);
+    }
+
+    // Long-lived shopper ID for order history: survives "Start New Shopping Session" and reloads
+    function randomId() {
+      if (crypto.randomUUID) return crypto.randomUUID();
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    }
+    let shopperId = null;
+    try {
+      shopperId = localStorage.getItem('ai_checkout_shopper');
+    } catch (e) { /* storage blocked */ }
+    if (!shopperId || !/^shop_[A-Za-z0-9-]{16,64}$/.test(shopperId)) {
+      shopperId = 'shop_' + randomId();
+      try {
+        localStorage.setItem('ai_checkout_shopper', shopperId);
+      } catch (e) { /* history then lasts for this page only */ }
     }
 
     let config = { paypalClientId: '', mockAi: true, modelName: 'gemini-3.5-flash-lite' };
@@ -1716,7 +1907,7 @@
             const res = await fetch('/api/paypal/create-order', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sessionId })
+              body: JSON.stringify({ sessionId, shopperId })
             });
 
             const data = await res.json();
@@ -1816,6 +2007,109 @@
       await fetchCart();
       await initPayPal();
     }
+
+    // Order History
+    const ordersModalEl = document.getElementById('orders-modal');
+    const ordersListEl = document.getElementById('orders-list');
+    const ordersIncludeUnpaidEl = document.getElementById('orders-include-unpaid');
+
+    function statusClass(status) {
+      if (status === 'COMPLETED') return 'paid';
+      if (status === 'PENDING' || status === 'APPROVED') return 'pending';
+      if (status === 'DENIED' || status === 'REFUNDED' || status === 'REVERSED') return 'bad';
+      return '';
+    }
+
+    function showOrdersMessage(text) {
+      const msg = document.createElement('div');
+      msg.className = 'orders-empty';
+      msg.textContent = text;
+      ordersListEl.replaceChildren(msg);
+    }
+
+    function renderOrders(orders) {
+      if (!orders.length) {
+        showOrdersMessage('No orders yet. Orders you pay for with PayPal will appear here.');
+        return;
+      }
+      const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      ordersListEl.replaceChildren(...orders.map(order => {
+        const card = document.createElement('article');
+        card.className = 'order-item';
+
+        const top = document.createElement('div');
+        top.className = 'order-item-top';
+        const info = document.createElement('div');
+        const date = document.createElement('div');
+        date.className = 'order-date';
+        date.textContent = dateFmt.format(new Date(order.createdAt));
+        const id = document.createElement('div');
+        id.className = 'order-id';
+        id.textContent = `PayPal order ${order.orderID}`;
+        info.append(date, id);
+        const pill = document.createElement('span');
+        pill.className = `status-pill ${statusClass(order.status)}`;
+        pill.textContent = order.statusLabel;
+        top.append(info, pill);
+
+        const lines = document.createElement('ul');
+        lines.className = 'order-lines';
+        order.lines.forEach(line => {
+          const li = document.createElement('li');
+          const name = document.createElement('span');
+          name.textContent = `${line.quantity} × ${line.name}`;
+          const sub = document.createElement('span');
+          sub.textContent = line.subtotal;
+          li.append(name, sub);
+          lines.appendChild(li);
+        });
+
+        const total = document.createElement('div');
+        total.className = 'order-total';
+        const label = document.createElement('span');
+        label.textContent = 'Total';
+        const amount = document.createElement('span');
+        amount.textContent = `${order.amount} USD`;
+        total.append(label, amount);
+
+        card.append(top, lines, total);
+        return card;
+      }));
+    }
+
+    async function loadOrders() {
+      showOrdersMessage('Loading your orders…');
+      const params = new URLSearchParams({ shopperId, sessionId });
+      if (ordersIncludeUnpaidEl.checked) params.set('includeUnpaid', '1');
+      try {
+        const res = await fetch(`/api/orders?${params}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not load orders');
+        renderOrders(data.orders);
+      } catch (err) {
+        showOrdersMessage(`Sorry, your orders could not be loaded. ${err.message}`);
+      }
+    }
+
+    function openOrders() {
+      ordersModalEl.style.display = 'flex';
+      loadOrders();
+      document.getElementById('btn-orders-close').focus();
+    }
+
+    function closeOrders() {
+      ordersModalEl.style.display = 'none';
+    }
+
+    document.getElementById('btn-orders').addEventListener('click', openOrders);
+    document.getElementById('btn-orders-close').addEventListener('click', closeOrders);
+    ordersIncludeUnpaidEl.addEventListener('change', loadOrders);
+    ordersModalEl.addEventListener('click', (e) => {
+      if (e.target === ordersModalEl) closeOrders();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && ordersModalEl.style.display === 'flex') closeOrders();
+    });
 
     initApp();
   </script>

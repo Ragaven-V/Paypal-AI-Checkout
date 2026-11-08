@@ -84,6 +84,7 @@ ai-checkout/
 │   ├── rateLimit.js           # Per-IP fixed-window rate limiter
 │   ├── paypal.js              # PayPal OAuth, orders, capture, webhook verification
 │   ├── db.js                  # SQLite store for orders and webhook events
+│   ├── orders.js              # Order history views and admin authentication
 │   ├── ai/
 │   │   ├── gemini.js          # Gemini chat, thinking config, caching, health, self-check
 │   │   ├── tools.js           # Function declarations and the shared tool dispatcher
@@ -91,9 +92,11 @@ ai-checkout/
 │   │   └── mockAi.js          # Rule-based fallback assistant
 │   └── routes/
 │       ├── api.js             # /api/config, /api/catalog, /api/cart/*, /api/chat
-│       └── paypal.js          # /api/paypal/* and the webhook handler
+│       ├── paypal.js          # /api/paypal/* and the webhook handler
+│       └── orders.js          # /api/orders and /api/admin/orders
 ├── catalog.json               # Curated products
-├── public/index.html          # Chat UI, product cards, cart, PayPal buttons
+├── public/index.html          # Chat UI, product cards, cart, PayPal buttons, My orders
+├── public/admin.html          # Password-protected orders dashboard (/admin)
 └── test/                      # Unit + HTTP tests (fake PayPal and fake Gemini), opt-in live test
 ```
 ---
@@ -201,6 +204,19 @@ dependency) at `DATABASE_PATH` (default `./data/ai-checkout.db`), so payments su
 payment can still be settled by a webhook that arrives later. Carts and chat sessions remain in memory.
 On hosts with an ephemeral filesystem (e.g. Render's free tier) attach a persistent disk and point
 `DATABASE_PATH` at it.
+
+### Order History
+
+- **Shoppers:** click **My orders** in the cart panel to see past paid orders (date, items, total, status).
+  History is tied to a random shopper ID kept in the browser (`localStorage`), so it survives
+  "Start New Shopping Session" and reloads, but not a different browser or cleared site data.
+  Tick **Show unfinished checkouts** to include orders where PayPal was opened but not paid.
+- **Admin:** open **`/admin`** (e.g. `http://localhost:3001/admin`) and sign in with `ADMIN_TOKEN` from `.env`.
+  It lists every order with a revenue/status summary, status filter and paging. Admin is disabled
+  while `ADMIN_TOKEN` is empty, and password attempts are limited to 10 per minute per IP.
+- APIs: `GET /api/orders?shopperId=...` and `GET /api/admin/orders` (header `Authorization: Bearer <ADMIN_TOKEN>`).
+
+Orders paid before this feature existed have no shopper ID, so they only show up on the admin page.
 
 ### Handling Cancellations or Declines
 - If you click "Cancel and return to store" during PayPal checkout, the application keeps your cart intact and displays a non-destructive notice: *"Payment was cancelled. Your items remain in your cart."*

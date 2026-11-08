@@ -5,6 +5,7 @@ import { config } from './config.js';
 import { createIpRateLimiter } from './rateLimit.js';
 import { createApiRouter } from './routes/api.js';
 import { createPayPalRouter, paypalWebhookHandler } from './routes/paypal.js';
+import { createOrdersRouter } from './routes/orders.js';
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -19,16 +20,20 @@ export function createApp() {
 
   const apiLimiter = createIpRateLimiter({ name: 'api', max: () => config.rateLimitApiPerMin });
   const chatLimiter = createIpRateLimiter({ name: 'chat', max: () => config.rateLimitChatPerMin });
-  app.locals.rateLimiters = { apiLimiter, chatLimiter };
+  // Admin password attempts: tight limit against guessing
+  const adminLimiter = createIpRateLimiter({ name: 'admin', max: 10, message: 'Too many admin attempts. Please wait a minute.' });
+  app.locals.rateLimiters = { apiLimiter, chatLimiter, adminLimiter };
 
   app.use(express.json({ limit: '100kb' }));
   app.use(express.static(publicDir));
+  app.get('/admin', (req, res) => res.sendFile(path.join(publicDir, 'admin.html')));
 
   // Webhooks come from PayPal's servers; keep them out of the per-IP client limit
   app.post('/api/paypal/webhook', paypalWebhookHandler);
 
   app.use('/api', apiLimiter);
   app.use('/api/paypal', createPayPalRouter());
+  app.use('/api', createOrdersRouter({ adminLimiter }));
   app.use('/api', createApiRouter({ chatLimiter }));
 
   // Unknown API routes / wrong methods get a JSON 404 instead of the SPA HTML

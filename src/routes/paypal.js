@@ -8,17 +8,21 @@ import {
   handleWebhookEvent
 } from '../paypal.js';
 import { isValidSessionId } from './api.js';
+import { isValidShopperId } from '../orders.js';
 
 export function createPayPalRouter() {
   const router = Router();
 
   router.post('/create-order', async (req, res) => {
-    const { sessionId } = req.body || {};
+    const { sessionId, shopperId } = req.body || {};
     if (!isValidSessionId(sessionId)) {
       return res.status(400).json({ error: 'Valid sessionId is required' });
     }
+    if (shopperId !== undefined && !isValidShopperId(shopperId)) {
+      return res.status(400).json({ error: 'Invalid shopperId' });
+    }
     try {
-      const order = await createPayPalOrder(getOrCreateSession(sessionId));
+      const order = await createPayPalOrder(getOrCreateSession(sessionId), { shopperId: shopperId ?? null });
       res.json({ orderID: order.id });
     } catch (err) {
       console.error('Failed to create PayPal order:', err.message);

@@ -57,7 +57,7 @@ async function paypalFetch(path, options = {}) {
   });
 }
 
-export async function createPayPalOrder(session) {
+export async function createPayPalOrder(session, { shopperId = null } = {}) {
   const summary = getCartSummary(session);
   if (summary.items.length === 0) {
     throw httpError('Your cart is empty. Please add items before checking out.', 400);
@@ -94,6 +94,11 @@ export async function createPayPalOrder(session) {
   orderStore.insert({
     orderId: order.id,
     sessionId: session.id,
+    shopperId,
+    // Line items exactly as charged, for order history (catalog prices may change later)
+    lines: summary.items.map(i => ({
+      id: i.id, name: i.name, quantity: i.quantity, priceInCents: i.priceInCents, subtotalInCents: i.subtotalInCents
+    })),
     // Snapshot exactly what this order charges for, so settlement only removes paid items
     items: new Map(summary.items.map(i => [i.id, i.quantity])),
     totalCents: summary.totalCents,
