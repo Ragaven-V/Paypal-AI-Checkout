@@ -47,7 +47,7 @@ export class PersistentCart {
   }
 }
 
-export function getOrCreateSession(sessionId, { shopperId = null } = {}) {
+export function getOrCreateSession(sessionId, { shopperId = null, userId = null } = {}) {
   if (!sessionId || typeof sessionId !== 'string') {
     sessionId = 'session_' + crypto.randomUUID();
   }
@@ -59,6 +59,8 @@ export function getOrCreateSession(sessionId, { shopperId = null } = {}) {
     session = {
       id: sessionId,
       shopperId: shopperId || row?.shopper_id || null,
+      // Signed-in account for this request (set fresh each time, so sign-out takes effect at once)
+      userId,
       cart: new PersistentCart(sessionId, row ? cartStore.load(sessionId) : []),
       chat: null,
       // Saved Gemini history; turned back into a live chat on the next message
@@ -70,6 +72,7 @@ export function getOrCreateSession(sessionId, { shopperId = null } = {}) {
     sessionStore.touch(sessionId, session.shopperId);
   } else {
     session.lastActive = Date.now();
+    session.userId = userId;
     if (shopperId && session.shopperId !== shopperId) {
       session.shopperId = shopperId;
     }

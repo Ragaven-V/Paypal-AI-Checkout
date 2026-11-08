@@ -64,6 +64,13 @@ export function getShopperOrders(shopperId, sessionId, { includeUnpaid = false }
     .map(toPublicOrder);
 }
 
+// A signed-in customer's orders, from any browser or device
+export function getUserOrders(userId, { includeUnpaid = false } = {}) {
+  return orderStore.listForUser(userId)
+    .filter(r => includeUnpaid || r.status !== 'CREATED')
+    .map(toPublicOrder);
+}
+
 export function getAdminOrders({ status, limit, offset }) {
   const { orders, total } = orderStore.listAll({ status, limit, offset });
   const summary = orderStore.summary().map(s => ({
@@ -92,8 +99,9 @@ export function isAdminRequest(req) {
 
 // ---- Assistant tools -------------------------------------------------------
 
-// Orders belonging to the session's shopper (or, without a shopper ID, the session itself)
+// Orders belonging to the signed-in account, else the browser's shopper ID (or the session itself)
 function ordersForSession(session) {
+  if (session.userId) return orderStore.listForUser(session.userId);
   return orderStore.listForShopper(session.shopperId || '', session.id);
 }
 
@@ -125,7 +133,11 @@ export function executeGetOrderHistory(session, limit = 5) {
  */
 export function executeReorder(session, orderId, addToCart) {
   const record = typeof orderId === 'string' ? orderStore.get(orderId) : null;
-  const owns = record && ((session.shopperId && record.shopperId === session.shopperId) || record.sessionId === session.id);
+  const owns = record && (
+    (session.userId && record.userId === session.userId) ||
+    (!record.userId && session.shopperId && record.shopperId === session.shopperId) ||
+    (!record.userId && record.sessionId === session.id)
+  );
   if (!owns) {
     return { success: false, error: `Order "${orderId}" was not found in this shopper's history.` };
   }

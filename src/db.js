@@ -59,6 +59,23 @@ const SCHEMA = `
     updated_at    INTEGER NOT NULL
   );
 
+  -- Customer accounts (email + scrypt password hash) and their login sessions
+  CREATE TABLE IF NOT EXISTS users (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    email          TEXT NOT NULL UNIQUE,
+    password_hash  TEXT NOT NULL,
+    created_at     INTEGER NOT NULL,
+    last_login_at  INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS auth_sessions (
+    token_hash  TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS auth_sessions_user_idx ON auth_sessions (user_id);
+
   CREATE TABLE IF NOT EXISTS webhook_events (
     event_id    TEXT PRIMARY KEY,
     event_type  TEXT NOT NULL,
@@ -196,10 +213,24 @@ export const orderStore = {
       .all(sessionId).map(toRecord);
   },
 
+  listForUser(userId, limit = 50) {
+    return getDb().prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT ?')
+      .all(userId, limit).map(toRecord);
+  },
+
+  // Attach guest orders (same browser shopper ID or session) to an account; returns how many
+  linkToUser(userId, shopperId, sessionId) {
+    return getDb().prepare(`
+      UPDATE orders SET user_id = ?
+      WHERE user_id IS NULL AND ((? IS NOT NULL AND shopper_id = ?) OR (? IS NOT NULL AND session_id = ?))
+    `).run(userId, shopperId ?? null, shopperId ?? null, sessionId ?? null, sessionId ?? null).changes;
+  },
+
   // A shopper's orders (plus any from their current session that predate shopper IDs)
   listForShopper(shopperId, sessionId, limit = 50) {
     return getDb().prepare(`
-      SELECT * FROM orders WHERE shopper_id = ? OR (session_id = ? AND shopper_id IS NULL)
+      SELECT * FROM orders
+      WHERE user_id IS NULL AND (shopper_id = ? OR (session_id = ? AND shopper_id IS NULL))
       ORDER BY created_at DESC LIMIT ?
     `).all(shopperId, sessionId ?? '', limit).map(toRecord);
   },
@@ -333,7 +364,45 @@ export const chatStore = {
   }
 };
 
+export const userStore = {
+  create(email, passwordHash) {
+    const result = getDb().prepare('INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)')
+      .run(email, passwordHash, Date.now());
+    return this.getById(Number(result.lastInsertRowid));
+  },
+  getByEmail(email) {
+    return getDb().prepare('SELECT * FROM users WHERE email = ?').get(email) || null;
+  },
+  getById(id) {
+    return getDb().prepare('SELECT * FROM users WHERE id = ?').get(id) || null;
+  },
+  touchLogin(id) {
+    getDb().prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(Date.now(), id);
+  }
+};
+
+export const authSessionStore = {
+  create(tokenHash, userId, expiresAt) {
+    getDb().prepare('INSERT INTO auth_sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
+      .run(tokenHash, userId, Date.now(), expiresAt);
+  },
+  // The user for a valid, unexpired session token hash
+  getUser(tokenHash) {
+    return getDb().prepare(`
+      SELECT u.id, u.email FROM auth_sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = ? AND s.expires_at > ?
+    `).get(tokenHash, Date.now()) || null;
+  },
+  delete(tokenHash) {
+    getDb().prepare('DELETE FROM auth_sessions WHERE token_hash = ?').run(tokenHash);
+  },
+  deleteExpired() {
+    getDb().prepare('DELETE FROM auth_sessions WHERE expires_at <= ?').run(Date.now());
+  }
+};
+
 export function clearAllForTesting() {
   getDb().exec(`DELETE FROM orders; DELETE FROM webhook_events; DELETE FROM sessions;
-    DELETE FROM cart_items; DELETE FROM chat_messages; DELETE FROM chat_history;`);
+    DELETE FROM cart_items; DELETE FROM chat_messages; DELETE FROM chat_history;
+    DELETE FROM auth_sessions; DELETE FROM users;`);
 }

@@ -2,6 +2,7 @@
 import { state } from './state.js';
 import { $, el, showModal } from './dom.js';
 import { getJSON } from './api.js';
+import { onAccountChange } from './account.js';
 
 export function statusClass(status) {
   if (status === 'COMPLETED') return 'paid';
@@ -56,7 +57,9 @@ async function loadOrders() {
     const { ok, data } = await getJSON(`/api/orders?${params}`);
     if (!ok) throw new Error(data.error || 'Could not load orders');
     if (!data.orders.length) {
-      showMessage('No orders yet. Orders you pay for with PayPal will appear here. You can also ask the assistant "what did I buy last time?"');
+      showMessage(state.user
+        ? 'No orders on your account yet. Orders you pay for with PayPal will appear here.'
+        : 'No orders yet. Orders you pay for with PayPal will appear here. Sign in to keep them across devices.');
       return;
     }
     const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -69,6 +72,10 @@ async function loadOrders() {
 export function initOrders() {
   const modal = $('orders-modal');
   let close = null;
+  // Refresh an open list when the user signs in or out
+  onAccountChange(() => {
+    if (modal.style.display === 'flex') loadOrders();
+  });
   $('btn-orders').addEventListener('click', () => {
     close = showModal(modal);
     loadOrders();

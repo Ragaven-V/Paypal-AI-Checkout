@@ -38,6 +38,7 @@ export const state = {
   config: { paypalClientId: '', mockAi: true, aiDegraded: false, modelName: '' },
   cart: { items: [], itemCount: 0, totalCents: 0, totalFormatted: '$0.00' },
   catalog: [],
+  user: null, // { id, email } when signed in
   catalogById: new Map()
 };
 

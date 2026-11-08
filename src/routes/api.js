@@ -4,7 +4,7 @@ import { catalog, catalogMap } from '../catalog.js';
 import { getOrCreateSession } from '../sessions.js';
 import { getCartSummary, executeAddToCart, executeDecrementCart, executeRemoveFromCart } from '../cart.js';
 import { runMockAi } from '../ai/mockAi.js';
-import { runGeminiTurn, isAiEnabled, aiHealth } from '../ai/gemini.js';
+import { runGeminiTurn, isAiEnabled, aiHealth, aiCooldownRemainingMs, isQuotaError } from '../ai/gemini.js';
 import { chatStore } from '../db.js';
 import { isValidShopperId } from '../orders.js';
 
@@ -23,6 +23,8 @@ export function createApiRouter({ chatLimiter }) {
       // true when the live AI path is failing and chat is answered by the fallback assistant
       aiDegraded: isAiEnabled() && aiHealth.ok === false,
       aiLastError: isAiEnabled() && aiHealth.ok === false ? aiHealth.lastError : null,
+      // Seconds until the AI is retried after hitting the Gemini usage limit (0 = available)
+      aiCooldownSeconds: Math.ceil(aiCooldownRemainingMs() / 1000),
       modelName: config.geminiModel,
       // Lets the cart show shipping/tax instantly; the server still computes the real totals
       pricing: {
@@ -104,7 +106,7 @@ export function createApiRouter({ chatLimiter }) {
       return res.status(400).json({ error: 'Invalid shopperId' });
     }
 
-    const session = getOrCreateSession(sessionId, { shopperId: shopperId ?? null });
+    const session = getOrCreateSession(sessionId, { shopperId: shopperId ?? null, userId: req.user?.id ?? null });
     const isStream = stream === true || req.headers.accept?.includes('text/event-stream') || req.query.stream === 'true';
 
     if (isStream) {
@@ -146,6 +148,10 @@ export function createApiRouter({ chatLimiter }) {
     if (!isAiEnabled()) {
       return respondWithMock();
     }
+    const cooldownMs = aiCooldownRemainingMs();
+    if (cooldownMs > 0) {
+      return respondWithMock(`The AI assistant is busy right now, so a basic assistant answered. Full AI is back in about ${Math.ceil(cooldownMs / 1000)}s.`);
+    }
 
     if (isStream) send({ type: 'start' });
 
@@ -177,7 +183,9 @@ export function createApiRouter({ chatLimiter }) {
         send({ type: 'done' });
         return res.end();
       }
-      return respondWithMock('Note: Responded using rule-based shopping assistant.');
+      return respondWithMock(isQuotaError(err)
+        ? 'The AI assistant reached its usage limit, so a basic assistant answered. Please try again shortly.'
+        : 'Note: Responded using rule-based shopping assistant.');
     }
   });
 

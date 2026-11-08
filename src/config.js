@@ -15,6 +15,9 @@ export const config = {
   // Gemini 3 models take thinkingLevel; Gemini 2.5 models take thinkingBudget. Empty = model default.
   get geminiThinkingLevel() { return (process.env.GEMINI_THINKING_LEVEL ?? 'low').trim().toLowerCase(); },
   get geminiExplicitCache() { return process.env.GEMINI_EXPLICIT_CACHE === 'true'; },
+  // Fail fast instead of the SDK default (5 attempts, backoff up to 60s): shoppers get the fallback quickly
+  get geminiTimeoutMs() { return numberOr(process.env.GEMINI_TIMEOUT_MS, 20000); },
+  get geminiRetryAttempts() { return numberOr(process.env.GEMINI_RETRY_ATTEMPTS, 2); },
 
   get paypalClientId() { return process.env.PAYPAL_CLIENT_ID || ''; },
   get paypalClientSecret() { return process.env.PAYPAL_CLIENT_SECRET || ''; },

@@ -20,7 +20,13 @@ const MAX_TOOL_ROUNDS = 5;
 
 if (!config.mockAiForced && config.geminiApiKey) {
   try {
-    aiClient = new GoogleGenAI({ apiKey: config.geminiApiKey });
+    aiClient = new GoogleGenAI({
+      apiKey: config.geminiApiKey,
+      httpOptions: {
+        timeout: config.geminiTimeoutMs,
+        retryOptions: { attempts: config.geminiRetryAttempts, initialDelay: 0.5, maxDelay: 2 }
+      }
+    });
   } catch (err) {
     console.warn('Warning: Failed to initialize GoogleGenAI client, will use Mock AI mode:', err.message);
   }
@@ -30,9 +36,35 @@ export function isAiEnabled() {
   return Boolean(aiClient);
 }
 
+// ---- Quota cooldown (circuit breaker) ------------------------------------------------------
+// After a 429 / RESOURCE_EXHAUSTED, stop calling Gemini for the delay Google suggests, so
+// shoppers get the fallback assistant instantly instead of waiting on doomed requests.
+let cooldownUntil = 0;
+const MIN_COOLDOWN_S = 10;
+const MAX_COOLDOWN_S = 120;
+
+export const isQuotaError = (err) => /\b429\b|RESOURCE_EXHAUSTED|exceeded your current quota/i.test(String(err?.message || err));
+
+function retryDelaySeconds(err) {
+  const text = String(err?.message || err);
+  // "retryDelay": "23s" (quotes may be escaped inside a nested error string) or "retry in 23s"
+  const match = text.match(/retryDelay[^0-9]{0,8}(\d+(?:\.\d+)?)s/i) || text.match(/retry in (\d+(?:\.\d+)?)\s*s/i);
+  const seconds = match ? Number(match[1]) : 30;
+  return Math.min(MAX_COOLDOWN_S, Math.max(MIN_COOLDOWN_S, Math.ceil(seconds)));
+}
+
+export function aiCooldownRemainingMs() {
+  return Math.max(0, cooldownUntil - Date.now());
+}
+
+export function resetAiCooldownForTesting() {
+  cooldownUntil = 0;
+}
+
 // Test hook: inject a fake client (or null to force mock mode)
 export function setAiClientForTesting(client) {
   aiClient = client;
+  cooldownUntil = 0;
   explicitCache = null;
   cacheExpiresAt = 0;
   resetAiHealth();
@@ -51,6 +83,9 @@ function recordAiSuccess() {
 }
 
 function recordAiFailure(err) {
+  if (isQuotaError(err)) {
+    cooldownUntil = Date.now() + retryDelaySeconds(err) * 1000;
+  }
   aiHealth.ok = false;
   aiHealth.lastError = String(err?.message || err).slice(0, 300);
   aiHealth.lastErrorAt = Date.now();

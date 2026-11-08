@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { config } from '../config.js';
-import { getShopperOrders, getAdminOrders, isAdminRequest, isValidShopperId } from '../orders.js';
+import { getShopperOrders, getUserOrders, getAdminOrders, isAdminRequest, isValidShopperId } from '../orders.js';
 import { isValidSessionId } from './api.js';
 
 const ADMIN_STATUSES = new Set(['CREATED', 'APPROVED', 'PENDING', 'COMPLETED', 'DENIED', 'REFUNDED', 'REVERSED']);
@@ -11,6 +11,9 @@ export function createOrdersRouter({ adminLimiter }) {
   // Shopper order history: GET /api/orders?shopperId=...&sessionId=...&includeUnpaid=1
   router.get('/orders', (req, res) => {
     const { shopperId, sessionId, includeUnpaid } = req.query;
+    if (req.user) {
+      return res.json({ orders: getUserOrders(req.user.id, { includeUnpaid: includeUnpaid === '1' }), account: true });
+    }
     if (!isValidShopperId(shopperId)) {
       return res.status(400).json({ error: 'Valid shopperId is required' });
     }

@@ -1217,3 +1217,119 @@ main {
   font-weight: 600;
   text-align: center;
 }
+
+/* Account */
+.account-area {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-account {
+  background: #fff;
+  color: var(--navy);
+  border: none;
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--pill);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-account:hover {
+  background: var(--primary-light);
+}
+
+.btn-account-ghost {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.btn-account-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.account-email {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-card {
+  max-width: 420px;
+  text-align: left;
+  padding: 1.5rem;
+}
+
+.account-intro {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin: 0.75rem 0 0.35rem;
+}
+
+.field-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1.5px solid #c5ccd6;
+  border-radius: var(--pill);
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text-main);
+  outline: none;
+}
+
+.field-input:focus {
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+.field-hint {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-top: 0.3rem;
+}
+
+.form-error {
+  color: var(--accent-red);
+  font-size: 0.8rem;
+  min-height: 1.2em;
+  margin: 0.6rem 0;
+}
+
+.account-switch {
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  .account-email {
+    display: none;
+  }
+}

@@ -106,6 +106,25 @@ test('HTTP: chat', async (t) => {
     assert.match(config.json.aiLastError, /INVALID_ARGUMENT/);
   });
 
+  await t.test('quota error (429): instant fallback, then Gemini is skipped during the cooldown', async () => {
+    const quota = new Error('{"error":{"code":429,"message":"You exceeded your current quota","status":"RESOURCE_EXHAUSTED","details":[{"retryDelay":"45s"}]}}');
+    const fake = createFakeGemini([quota, [[{ text: 'should not be used' }]]]);
+    setAiClientForTesting(fake);
+
+    const first = await http.post('/api/chat', { sessionId: 'quota_s', message: 'hi', stream: true });
+    const notice = parseSse(first.text).find(e => e.type === 'notice');
+    assert.match(notice.message, /usage limit/);
+
+    const config = await http.get('/api/config');
+    assert.ok(config.json.aiCooldownSeconds >= 40 && config.json.aiCooldownSeconds <= 45, `cooldown ${config.json.aiCooldownSeconds}s`);
+
+    const second = await http.post('/api/chat', { sessionId: 'quota_s2', message: 'add the grinder' });
+    assert.match(second.json.notice, /busy right now/);
+    assert.equal(second.json.cart.items[0].id, 'p1', 'fallback assistant still serves the shopper');
+    assert.equal(fake.calls.messages.length, 1, 'Gemini was not called again during the cooldown');
+    setAiClientForTesting(null);
+  });
+
   await t.test('a failed turn resets the chat so the next turn starts clean', async () => {
     const fake = createFakeGemini([new Error('boom'), [text('Hello again!')]]);
     setAiClientForTesting(fake);

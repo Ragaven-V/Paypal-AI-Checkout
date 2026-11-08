@@ -57,7 +57,7 @@ async function paypalFetch(path, options = {}) {
   });
 }
 
-export async function createPayPalOrder(session, { shopperId = null } = {}) {
+export async function createPayPalOrder(session, { shopperId = null, userId = null } = {}) {
   const summary = getCartSummary(session);
   if (summary.items.length === 0) {
     throw httpError('Your cart is empty. Please add items before checking out.', 400);
@@ -99,6 +99,7 @@ export async function createPayPalOrder(session, { shopperId = null } = {}) {
     orderId: order.id,
     sessionId: session.id,
     shopperId,
+    userId,
     // Line items exactly as charged, for order history (catalog prices may change later)
     lines: summary.items.map(i => ({
       id: i.id, name: i.name, quantity: i.quantity, priceInCents: i.priceInCents, subtotalInCents: i.subtotalInCents

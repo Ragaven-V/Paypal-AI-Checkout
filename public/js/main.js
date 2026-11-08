@@ -5,6 +5,7 @@ import { getJSON } from './api.js';
 import { fetchCart } from './cart.js';
 import { sendMessage, restoreChat, resetChat, appendMessage } from './chat.js';
 import { initOrders } from './orders.js';
+import { initAccount } from './account.js';
 import { initPayPal, closeConfirmationModal } from './paypal.js';
 
 function renderAiBadge() {
@@ -55,7 +56,7 @@ async function init() {
   if (catalogRes.status === 'fulfilled' && catalogRes.value.ok) setCatalog(catalogRes.value.data.products || []);
   renderAiBadge();
 
-  await Promise.all([fetchCart(), restoreChat()]);
+  await Promise.all([fetchCart(), restoreChat(), initAccount()]);
   initPayPal();
 }
 

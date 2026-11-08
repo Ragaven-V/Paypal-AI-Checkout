@@ -25,6 +25,11 @@
       <div class="status-badges">
         <span id="badge-ai-mode" class="badge badge-mock">🤖 Connecting AI...</span>
         <span class="badge badge-paypal">🔒 PayPal Sandbox</span>
+        <div class="account-area" id="account-area">
+          <button type="button" class="btn-account" id="btn-signin">Sign in</button>
+          <span class="account-email" id="account-email" hidden></span>
+          <button type="button" class="btn-account btn-account-ghost" id="btn-signout" hidden>Sign out</button>
+        </div>
       </div>
     </div>
   </header>
@@ -190,6 +195,30 @@
         <input type="checkbox" id="orders-include-unpaid">
         Show unfinished checkouts
       </label>
+    </div>
+  </div>
+
+  <!-- Account Modal (sign in / create account) -->
+  <div class="modal-backdrop" id="account-modal" role="dialog" aria-modal="true" aria-labelledby="account-title">
+    <div class="modal-card account-card">
+      <div class="orders-head">
+        <h2 id="account-title">Sign in</h2>
+        <button type="button" class="btn-close" id="btn-account-close" aria-label="Close">✕</button>
+      </div>
+      <p class="account-intro" id="account-intro">Sign in to see your orders on any device.</p>
+      <form id="account-form" novalidate>
+        <label class="field-label" for="account-email-input">Email</label>
+        <input class="field-input" type="email" id="account-email-input" autocomplete="email" required maxlength="254">
+        <label class="field-label" for="account-password-input">Password</label>
+        <input class="field-input" type="password" id="account-password-input" autocomplete="current-password" required minlength="8" maxlength="128" aria-describedby="account-password-hint">
+        <p class="field-hint" id="account-password-hint">At least 8 characters.</p>
+        <div class="form-error" id="account-error" role="alert"></div>
+        <button type="submit" class="btn-new-order" id="account-submit">Sign in</button>
+      </form>
+      <p class="account-switch">
+        <span id="account-switch-text">New here?</span>
+        <button type="button" class="btn-link" id="account-switch">Create an account</button>
+      </p>
     </div>
   </div>
 

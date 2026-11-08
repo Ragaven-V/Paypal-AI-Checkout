@@ -22,7 +22,7 @@ export function createPayPalRouter() {
       return res.status(400).json({ error: 'Invalid shopperId' });
     }
     try {
-      const order = await createPayPalOrder(getOrCreateSession(sessionId), { shopperId: shopperId ?? null });
+      const order = await createPayPalOrder(getOrCreateSession(sessionId), { shopperId: shopperId ?? null, userId: req.user?.id ?? null });
       res.json({ orderID: order.id });
     } catch (err) {
       console.error('Failed to create PayPal order:', err.message);
