@@ -20,8 +20,18 @@ export const app = createApp();
 
 // Start server if invoked directly (node server.js / npm start)
 if (process.argv[1] && process.argv[1].endsWith('server.js')) {
-  startAiBackground();
-  app.listen(config.port, () => {
+  // Express 5 passes listen errors (e.g. port already in use) to this callback instead of throwing
+  app.listen(config.port, (err) => {
+    if (err) {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${config.port} is already in use, probably by another copy of this server.`);
+        console.error('   Stop the other one (Ctrl+C in its terminal) or set a different PORT in .env.');
+      } else {
+        console.error(`❌ Could not start the server: ${err.message}`);
+      }
+      process.exit(1);
+    }
+    startAiBackground();
     console.log(`====================================================`);
     console.log(`🛒 Ask & Buy AI Checkout Server running on port ${config.port}`);
     console.log(`👉 Local: http://localhost:${config.port}`);
