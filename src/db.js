@@ -125,6 +125,11 @@ function migrate(database) {
   database.exec('CREATE INDEX IF NOT EXISTS orders_user_idx ON orders (user_id)');
 }
 
+// Run fn inside one SQLite transaction (all or nothing). fn must be synchronous.
+export function inTransaction(fn) {
+  return getDb().transaction(fn)();
+}
+
 export function closeDb() {
   if (db) {
     db.close();
@@ -197,15 +202,25 @@ export const orderStore = {
     return toRecord(getDb().prepare('SELECT * FROM orders WHERE order_id = ?').get(orderId));
   },
 
-  // Persist the mutable fields of a record
+  // Persist the mutable fields of a record. settled and webhook_confirmed only ever go from
+  // 0 to 1, so saving a copy loaded before a concurrent webhook can't undo what it recorded.
   save(record) {
     record.updatedAt = Date.now();
     getDb().prepare(`
-      UPDATE orders SET status = ?, capture_id = ?, settled = ?, webhook_confirmed = ?, updated_at = ?
+      UPDATE orders SET status = ?, capture_id = COALESCE(?, capture_id), settled = MAX(settled, ?),
+                        webhook_confirmed = MAX(webhook_confirmed, ?), updated_at = ?
       WHERE order_id = ?
     `).run(record.status, record.captureId ?? null, record.settled ? 1 : 0,
       record.webhookConfirmed ? 1 : 0, record.updatedAt, record.orderId);
     return record;
+  },
+
+  // Atomically mark an order paid. True only for the one caller that actually flipped it,
+  // so the capture route and the webhook can't both settle (and empty the cart) twice.
+  claimSettlement(orderId) {
+    return getDb().prepare(`
+      UPDATE orders SET settled = 1, status = 'COMPLETED', updated_at = ? WHERE order_id = ? AND settled = 0
+    `).run(Date.now(), orderId).changes === 1;
   },
 
   listBySession(sessionId) {

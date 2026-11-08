@@ -1,7 +1,7 @@
 import { config } from './config.js';
 import { getCartSummary, removePaidItems } from './cart.js';
-import { getOrCreateSession } from './sessions.js';
-import { orderStore, webhookEventStore, clearAllForTesting } from './db.js';
+import { getOrCreateSession, sessions } from './sessions.js';
+import { orderStore, webhookEventStore, clearAllForTesting, inTransaction } from './db.js';
 import { log } from './logger.js';
 
 let cachedToken = null;
@@ -123,6 +123,9 @@ function settleOrder(record) {
   if (record.settled) return;
   record.settled = true;
   record.status = 'COMPLETED';
+  // Only the caller that flips the stored flag empties the cart: the capture route and a
+  // webhook arriving at the same moment may each hold their own copy of this record.
+  if (!orderStore.claimSettlement(record.orderId)) return;
   // Load from the DB if needed, so the saved cart is updated even after a restart
   const session = getOrCreateSession(record.sessionId);
   if (session) {
@@ -144,14 +147,27 @@ export async function capturePayPalOrder(session, orderID) {
   }
 
   const res = await paypalFetch(`/v2/checkout/orders/${encodeURIComponent(orderID)}/capture`, { method: 'POST' });
-  if (!res.ok) {
+  let captureData;
+  if (res.ok) {
+    captureData = await res.json();
+  } else {
     const body = await res.text();
-    log.error(`PayPal capture failed (${res.status}):`, body);
-    const notApproved = res.status === 422 && body.includes('ORDER_NOT_APPROVED');
-    throw httpError(notApproved ? 'The order has not been approved by the buyer yet.' : 'PayPal could not capture the payment.', notApproved ? 422 : 502);
+    if (res.status === 422 && body.includes('ORDER_ALREADY_CAPTURED')) {
+      // A retried capture (e.g. the first response was lost): the buyer has paid, so read
+      // the order's captures from PayPal and settle from those instead of reporting a failure.
+      const lookup = await paypalFetch(`/v2/checkout/orders/${encodeURIComponent(orderID)}`, { method: 'GET' });
+      if (!lookup.ok) {
+        log.error(`PayPal order lookup failed (${lookup.status}):`, await lookup.text());
+        throw httpError('PayPal could not confirm the payment. Please check My orders shortly.', 502);
+      }
+      captureData = await lookup.json();
+    } else {
+      log.error(`PayPal capture failed (${res.status}):`, body);
+      const notApproved = res.status === 422 && body.includes('ORDER_NOT_APPROVED');
+      throw httpError(notApproved ? 'The order has not been approved by the buyer yet.' : 'PayPal could not capture the payment.', notApproved ? 422 : 502);
+    }
   }
 
-  const captureData = await res.json();
   const capture = captureData.purchase_units?.[0]?.payments?.captures?.[0];
   record.captureId = capture?.id || record.captureId;
 
@@ -227,13 +243,23 @@ function orderIdFromEvent(event) {
  */
 export function handleWebhookEvent(event) {
   const orderId = orderIdFromEvent(event);
-  if (event.id && !webhookEventStore.tryInsert(event.id, event.event_type, orderId)) {
-    return 'duplicate';
+  try {
+    // One transaction: if applying the event fails, the event id is not recorded either,
+    // so PayPal's retry is processed instead of being dismissed as a duplicate.
+    return inTransaction(() => {
+      if (event.id && !webhookEventStore.tryInsert(event.id, event.event_type, orderId)) {
+        return 'duplicate';
+      }
+      const outcome = applyWebhookEvent(event, orderId);
+      if (event.id) webhookEventStore.setOutcome(event.id, outcome);
+      return outcome;
+    });
+  } catch (err) {
+    // The cart writes were rolled back too: drop the cached copy so it is reloaded from the DB
+    const record = orderId ? orderStore.get(orderId) : null;
+    if (record) sessions.delete(record.sessionId);
+    throw err;
   }
-
-  const outcome = applyWebhookEvent(event, orderId);
-  if (event.id) webhookEventStore.setOutcome(event.id, outcome);
-  return outcome;
 }
 
 function applyWebhookEvent(event, orderId) {

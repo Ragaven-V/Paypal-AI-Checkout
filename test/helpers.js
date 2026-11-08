@@ -82,19 +82,31 @@ export function createFakePayPal() {
     res.status(201).json({ id, status: 'CREATED' });
   });
 
-  app.post('/v2/checkout/orders/:id/capture', (req, res) => {
+  const capturedOrder = (id, captureStatus = 'COMPLETED') => ({
+    id,
+    status: 'COMPLETED',
+    purchase_units: [{ payments: { captures: [{ id: `CAP-${id}`, status: captureStatus }] } }]
+  });
+
+  // state.beforeCaptureResponse: optional async hook run before the capture answers (race tests)
+  app.post('/v2/checkout/orders/:id/capture', async (req, res) => {
     const { id } = req.params;
     if (!state.orders.has(id)) return res.status(404).json({ name: 'RESOURCE_NOT_FOUND' });
     const behavior = state.captureBehavior.get(id) || 'completed';
     if (behavior === 'not-approved') {
       return res.status(422).json({ name: 'UNPROCESSABLE_ENTITY', details: [{ issue: 'ORDER_NOT_APPROVED' }] });
     }
-    const captureStatus = behavior === 'pending' ? 'PENDING' : 'COMPLETED';
-    res.status(201).json({
-      id,
-      status: 'COMPLETED',
-      purchase_units: [{ payments: { captures: [{ id: `CAP-${id}`, status: captureStatus }] } }]
-    });
+    if (behavior === 'already-captured') {
+      return res.status(422).json({ name: 'UNPROCESSABLE_ENTITY', details: [{ issue: 'ORDER_ALREADY_CAPTURED' }] });
+    }
+    if (state.beforeCaptureResponse) await state.beforeCaptureResponse(id);
+    res.status(201).json(capturedOrder(id, behavior === 'pending' ? 'PENDING' : 'COMPLETED'));
+  });
+
+  // Order details (used after ORDER_ALREADY_CAPTURED)
+  app.get('/v2/checkout/orders/:id', (req, res) => {
+    if (!state.orders.has(req.params.id)) return res.status(404).json({ name: 'RESOURCE_NOT_FOUND' });
+    res.json(capturedOrder(req.params.id));
   });
 
   app.post('/v1/notifications/verify-webhook-signature', (req, res) => {

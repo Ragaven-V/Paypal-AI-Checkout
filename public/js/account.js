@@ -1,8 +1,10 @@
 // Account: sign in / create account / sign out. The login cookie is HttpOnly, so this
 // module only ever sees the user's id and email returned by the API.
-import { state } from './state.js';
+import { state, startNewSession, startNewShopper } from './state.js';
 import { $, showModal, showToast } from './dom.js';
 import { getJSON, postJSON } from './api.js';
+import { resetChat } from './chat.js';
+import { fetchCart } from './cart.js';
 
 let mode = 'signin';
 let closeModal = null;
@@ -86,6 +88,11 @@ async function submit(e) {
 
 async function signOut() {
   await postJSON('/api/auth/logout', {}).catch(() => {});
+  // Leave nothing of the account behind on a shared device: fresh cart, chat and shopper ID
+  startNewSession();
+  startNewShopper();
+  resetChat();
+  await fetchCart();
   setUser(null);
   showToast('Signed out.', 'info');
 }

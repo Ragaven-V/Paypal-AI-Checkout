@@ -47,6 +47,12 @@ export function startNewSession() {
   writeStorage(sessionStorage, SESSION_KEY, state.sessionId);
 }
 
+// New browser shopper ID (after sign-out, so the next person's guest orders aren't tied to it)
+export function startNewShopper() {
+  state.shopperId = 'shop_' + randomId();
+  writeStorage(localStorage, SHOPPER_KEY, state.shopperId);
+}
+
 export function setCatalog(products) {
   state.catalog = products;
   state.catalogById = new Map(products.map(p => [p.id, p]));

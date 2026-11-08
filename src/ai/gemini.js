@@ -187,9 +187,16 @@ const KEEP_HISTORY = 8;
 // pair is cut in half (Gemini rejects orphaned function turns)
 export function trimHistory(history, maxLength = MAX_HISTORY, keep = KEEP_HISTORY) {
   if (!Array.isArray(history)) return [];
-  let start = history.length > maxLength ? history.length - keep : 0;
+  const cut = history.length > maxLength ? history.length - keep : 0;
+  let start = cut;
   while (start < history.length && !isUserTextTurn(history[start])) {
     start++;
+  }
+  if (start === history.length) {
+    // The kept window is all tool rounds of one long turn: keep that whole turn rather than
+    // dropping the entire conversation
+    start = cut;
+    while (start > 0 && !isUserTextTurn(history[start])) start--;
   }
   return history.slice(start);
 }
@@ -267,6 +274,27 @@ export async function runGeminiTurn(session, message, { onText = () => {}, onEve
       const responseParts = calls.map(call => runToolCall(session, call, trackEvent));
       calls = [];
       text += await consumeStream(await chat.sendMessageStream({ message: responseParts }), onText, calls);
+    }
+
+    if (calls.length > 0) {
+      // Out of tool rounds: every functionCall still needs a functionResponse, or the history
+      // is invalid and the next message fails. Answer them with an error and ask for a reply.
+      const refusal = calls.map(({ name, id }) => ({
+        functionResponse: {
+          name,
+          ...(id ? { id } : {}),
+          response: { error: 'Tool limit for this message reached. Reply to the shopper now with what you have, without calling tools.' }
+        }
+      }));
+      calls = [];
+      text += await consumeStream(await chat.sendMessageStream({ message: refusal }), onText, calls);
+      if (calls.length > 0) {
+        // Still asking for tools: don't keep a history that ends in an unanswered call
+        session.chat = null;
+        try { chatStore.clearHistory(session.id); } catch { /* ignore */ }
+        recordAiSuccess();
+        return { text, products, toolsRan };
+      }
     }
 
     recordAiSuccess();

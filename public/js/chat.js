@@ -75,15 +75,22 @@ export async function restoreChat() {
   }
 }
 
+// One message at a time: the Send button and the prompt chips are blocked until the reply ends
+let busy = false;
+function setBusy(value) {
+  busy = value;
+  $('btn-send').disabled = value;
+  document.querySelectorAll('.prompt-chip').forEach(chip => { chip.disabled = value; });
+}
+
 export async function sendMessage(rawText) {
   const text = rawText.trim();
-  if (!text) return;
+  if (!text || busy) return;
 
   const input = $('chat-input');
-  const sendBtn = $('btn-send');
   appendMessage('user', text);
   input.value = '';
-  sendBtn.disabled = true;
+  setBusy(true);
   const skeleton = showSkeleton();
 
   let msg = null;
@@ -155,7 +162,7 @@ export async function sendMessage(rawText) {
   } finally {
     if (skeleton.isConnected) skeleton.remove();
     cursor?.remove();
-    sendBtn.disabled = false;
+    setBusy(false);
     input.focus();
   }
 }

@@ -29,7 +29,10 @@ export function createApp() {
   // Password attempts: tight limits against guessing
   const adminLimiter = createIpRateLimiter({ name: 'admin', max: 10, message: 'Too many admin attempts. Please wait a minute.' });
   const authLimiter = createIpRateLimiter({ name: 'auth', max: () => config.rateLimitAuthPerMin, message: 'Too many sign-in attempts. Please wait a minute.' });
-  app.locals.rateLimiters = { apiLimiter, chatLimiter, adminLimiter, authLimiter };
+  // Generous: PayPal delivers from a few IPs; this only stops floods of fake webhooks, each of
+  // which would otherwise cost a verify-webhook-signature call to PayPal
+  const webhookLimiter = createIpRateLimiter({ name: 'webhook', max: 300 });
+  app.locals.rateLimiters = { apiLimiter, chatLimiter, adminLimiter, authLimiter, webhookLimiter };
 
   app.use(requestLogger);
   app.use(securityHeaders);
@@ -45,8 +48,8 @@ export function createApp() {
   app.use(express.static(publicDir));
   app.get('/admin', (req, res) => res.sendFile(path.join(publicDir, 'admin.html')));
 
-  // Webhooks come from PayPal's servers: no client rate limit, no cookies, no Origin check
-  app.post('/api/paypal/webhook', paypalWebhookHandler);
+  // Webhooks come from PayPal's servers: their own rate limit, no cookies, no Origin check
+  app.post('/api/paypal/webhook', webhookLimiter, paypalWebhookHandler);
 
   app.use('/api', apiLimiter);
   app.use('/api', sameOriginOnly);

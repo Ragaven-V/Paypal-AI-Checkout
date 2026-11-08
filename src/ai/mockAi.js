@@ -51,6 +51,9 @@ export function runMockAi(session, userMessage) {
       return { reply: "You don't have any past orders yet, so there's nothing to reorder. Tell me what you're looking for!", products: [], cart: getCartSummary(session) };
     }
     const result = executeReorder(session, last.order_id, executeAddToCart);
+    if (!result.success) {
+      return { reply: result.message || result.error || "Sorry, I couldn't put that order back in your cart.", products: [], cart: getCartSummary(session) };
+    }
     const products = result.added.map(a => catalog.find(p => p.id === a.product_id)).filter(Boolean);
     const summary = getCartSummary(session);
     return {

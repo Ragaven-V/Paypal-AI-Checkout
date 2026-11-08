@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { sessionStore, cartStore, chatStore } from './db.js';
+import { sessionStore, cartStore, chatStore, authSessionStore } from './db.js';
 import { log } from './logger.js';
 
 /**
@@ -48,7 +48,10 @@ export class PersistentCart {
   }
 }
 
-export function getOrCreateSession(sessionId, { shopperId = null, userId = null } = {}) {
+// userId: the signed-in account for this request, or null for a guest. Leave it out (cart,
+// checkout and webhook calls) to keep the value set by the last chat request: overwriting it
+// with null mid-turn would make the assistant's order tools lose the account.
+export function getOrCreateSession(sessionId, { shopperId = null, userId } = {}) {
   if (!sessionId || typeof sessionId !== 'string') {
     sessionId = 'session_' + crypto.randomUUID();
   }
@@ -60,8 +63,8 @@ export function getOrCreateSession(sessionId, { shopperId = null, userId = null 
     session = {
       id: sessionId,
       shopperId: shopperId || row?.shopper_id || null,
-      // Signed-in account for this request (set fresh each time, so sign-out takes effect at once)
-      userId,
+      // Signed-in account (set fresh by each chat request, so sign-out takes effect at once)
+      userId: userId ?? null,
       cart: new PersistentCart(sessionId, row ? cartStore.load(sessionId) : []),
       chat: null,
       // Saved Gemini history; turned back into a live chat on the next message
@@ -73,13 +76,31 @@ export function getOrCreateSession(sessionId, { shopperId = null, userId = null 
     sessionStore.touch(sessionId, session.shopperId);
   } else {
     session.lastActive = Date.now();
-    session.userId = userId;
+    if (userId !== undefined) session.userId = userId;
     if (shopperId && session.shopperId !== shopperId) {
       session.shopperId = shopperId;
     }
     sessionStore.touch(sessionId, shopperId);
   }
   return session;
+}
+
+/**
+ * Run chat turns for one session one at a time. A turn is several Gemini sends (message,
+ * tool responses...); two interleaved turns would put one turn's tool responses after the
+ * other's message, which Gemini rejects.
+ */
+export async function withSessionTurn(session, fn) {
+  const previous = session.turnQueue || Promise.resolve();
+  let release;
+  const mine = new Promise(resolve => { release = resolve; });
+  session.turnQueue = previous.then(() => mine);
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
 }
 
 // Periodic cleanup: evict idle sessions from memory and prune long-abandoned ones from the DB
@@ -92,6 +113,7 @@ const cleanupTimer = setInterval(() => {
   }
   try {
     sessionStore.pruneOlderThan(DB_RETENTION_MS);
+    authSessionStore.deleteExpired();
   } catch (err) {
     log.error('Session prune failed:', err.message);
   }

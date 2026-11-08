@@ -101,8 +101,18 @@ test('create an account, sign out, sign back in', async ({ page }) => {
   await expect(page.locator('#account-email')).toHaveText(email);
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 
+  // Something in the cart and chat while signed in...
+  await page.getByLabel('Message the shopping assistant').fill('add the mug');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(cart(page).getByText('Artisan Ceramic Coffee Mug')).toBeVisible();
+  const shopperBefore = await page.evaluate(() => localStorage.getItem('ai_checkout_shopper'));
+
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  // ...is gone after signing out (shared computers), and the browser gets a new shopper ID
+  await expect(cart(page).getByText('Your cart is empty')).toBeVisible();
+  await expect(page.getByRole('log').getByText('add the mug')).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('ai_checkout_shopper'))).not.toBe(shopperBefore);
 
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByLabel('Email').fill(email);

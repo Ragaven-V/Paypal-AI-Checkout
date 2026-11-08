@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { config } from '../config.js';
 import { catalog, catalogMap } from '../catalog.js';
-import { getOrCreateSession } from '../sessions.js';
+import { getOrCreateSession, withSessionTurn } from '../sessions.js';
 import { getCartSummary, executeAddToCart, executeDecrementCart, executeRemoveFromCart } from '../cart.js';
 import { runMockAi } from '../ai/mockAi.js';
 import { runGeminiTurn, isAiEnabled, aiHealth, aiCooldownRemainingMs, isQuotaError } from '../ai/gemini.js';
@@ -146,47 +146,52 @@ export function createApiRouter({ chatLimiter }) {
       res.end();
     };
 
-    if (!isAiEnabled()) {
-      return respondWithMock();
-    }
-    const cooldownMs = aiCooldownRemainingMs();
-    if (cooldownMs > 0) {
-      return respondWithMock(`The AI assistant is busy right now, so a basic assistant answered. Full AI is back in about ${Math.ceil(cooldownMs / 1000)}s.`);
-    }
+    // One turn at a time per session (a second message waits for the first reply)
+    return withSessionTurn(session, () => runTurn());
 
-    if (isStream) send({ type: 'start' });
-
-    try {
-      const result = await runGeminiTurn(session, message, {
-        onText: (text) => isStream && send({ type: 'chunk', text }),
-        onEvent: (event) => isStream && send(event)
-      });
-
-      const reply = result.text || "I've updated your shopping request. Let me know if you need anything else!";
-      record(reply, result.products);
-      if (!isStream) {
-        return res.json({ reply, products: result.products, cart: getCartSummary(session) });
+    async function runTurn() {
+      if (!isAiEnabled()) {
+        return respondWithMock();
       }
-      send({ type: 'cart', cart: getCartSummary(session) });
-      send({ type: 'done' });
-      return res.end();
-    } catch (err) {
-      log.error('Gemini chat error:', String(err.message).slice(0, 300));
+      const cooldownMs = aiCooldownRemainingMs();
+      if (cooldownMs > 0) {
+        return respondWithMock(`The AI assistant is busy right now, so a basic assistant answered. Full AI is back in about ${Math.ceil(cooldownMs / 1000)}s.`);
+      }
 
-      // Tools already changed the cart (or text was streamed): replaying via the mock would repeat actions
-      if (err.toolsRan || err.partialText) {
-        record(err.partialText || TOOL_FAILURE_REPLY);
+      if (isStream) send({ type: 'start' });
+
+      try {
+        const result = await runGeminiTurn(session, message, {
+          onText: (text) => isStream && send({ type: 'chunk', text }),
+          onEvent: (event) => isStream && send(event)
+        });
+
+        const reply = result.text || "I've updated your shopping request. Let me know if you need anything else!";
+        record(reply, result.products);
         if (!isStream) {
-          return res.json({ reply: err.partialText || TOOL_FAILURE_REPLY, products: [], cart: getCartSummary(session) });
+          return res.json({ reply, products: result.products, cart: getCartSummary(session) });
         }
-        if (!err.partialText) send({ type: 'chunk', text: TOOL_FAILURE_REPLY });
         send({ type: 'cart', cart: getCartSummary(session) });
         send({ type: 'done' });
         return res.end();
+      } catch (err) {
+        log.error('Gemini chat error:', String(err.message).slice(0, 300));
+
+        // Tools already changed the cart (or text was streamed): replaying via the mock would repeat actions
+        if (err.toolsRan || err.partialText) {
+          record(err.partialText || TOOL_FAILURE_REPLY);
+          if (!isStream) {
+            return res.json({ reply: err.partialText || TOOL_FAILURE_REPLY, products: [], cart: getCartSummary(session) });
+          }
+          if (!err.partialText) send({ type: 'chunk', text: TOOL_FAILURE_REPLY });
+          send({ type: 'cart', cart: getCartSummary(session) });
+          send({ type: 'done' });
+          return res.end();
+        }
+        return respondWithMock(isQuotaError(err)
+          ? 'The AI assistant reached its usage limit, so a basic assistant answered. Please try again shortly.'
+          : 'Note: Responded using rule-based shopping assistant.');
       }
-      return respondWithMock(isQuotaError(err)
-        ? 'The AI assistant reached its usage limit, so a basic assistant answered. Please try again shortly.'
-        : 'Note: Responded using rule-based shopping assistant.');
     }
   });
 

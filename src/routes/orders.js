@@ -36,8 +36,9 @@ export function createOrdersRouter({ adminLimiter }) {
     if (status && !ADMIN_STATUSES.has(status)) {
       return res.status(400).json({ error: 'Unknown status filter' });
     }
-    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
-    const offset = Math.max(0, Number(req.query.offset) || 0);
+    // Whole numbers only: SQLite rejects a fractional LIMIT/OFFSET ("datatype mismatch")
+    const limit = Math.min(200, Math.max(1, Math.floor(Number(req.query.limit)) || 50));
+    const offset = Math.max(0, Math.floor(Number(req.query.offset)) || 0);
     res.json(getAdminOrders({ status, limit, offset }));
   });
 

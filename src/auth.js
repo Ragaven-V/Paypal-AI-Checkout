@@ -78,6 +78,15 @@ function recordFailure(email) {
   else entry.count++;
 }
 
+// Forget windows that have ended, so trying many different emails can't grow memory forever
+const failureSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [email, entry] of failures) {
+    if (now - entry.first >= FAIL_WINDOW_MS) failures.delete(email);
+  }
+}, FAIL_WINDOW_MS);
+failureSweep.unref();
+
 export function resetLoginThrottleForTesting() {
   failures.clear();
 }
@@ -105,11 +114,13 @@ export async function authenticateUser(rawEmail, password) {
     throw httpError('Please enter your email and password.', 400);
   }
   checkLockout(email);
+  // Count the attempt before the (slow, async) password check, so parallel guesses can't all
+  // pass the lockout check first; a successful sign-in clears it below.
+  recordFailure(email);
 
   const user = userStore.getByEmail(email);
   const ok = await verifyPassword(password.slice(0, MAX_PASSWORD), user ? user.password_hash : await getDummyHash());
   if (!user || !ok) {
-    recordFailure(email);
     throw httpError('Incorrect email or password.', 401);
   }
   failures.delete(email);
@@ -144,7 +155,11 @@ export function readCookie(req, name) {
   for (const part of header.split(';')) {
     const idx = part.indexOf('=');
     if (idx > 0 && part.slice(0, idx).trim() === name) {
-      return decodeURIComponent(part.slice(idx + 1).trim());
+      try {
+        return decodeURIComponent(part.slice(idx + 1).trim());
+      } catch {
+        return null; // malformed %-encoding: treat as no cookie
+      }
     }
   }
   return null;
