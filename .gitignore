@@ -10,3 +10,6 @@ yarn-error.log*
 
 # Local SQLite database (orders, webhook events)
 data/
+
+# AI eval reports
+eval-results/

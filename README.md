@@ -82,6 +82,7 @@ ai-checkout/
 │   ├── cart.js                # Cart math in integer cents, add/decrement/remove/view
 │   ├── sessions.js            # In-memory sessions with idle cleanup
 │   ├── rateLimit.js           # Per-IP fixed-window rate limiter
+│   ├── security.js            # Security headers (CSP etc.)
 │   ├── paypal.js              # PayPal OAuth, orders, capture, webhook verification
 │   ├── db.js                  # SQLite store for orders and webhook events
 │   ├── orders.js              # Order history views and admin authentication
@@ -95,8 +96,12 @@ ai-checkout/
 │       ├── paypal.js          # /api/paypal/* and the webhook handler
 │       └── orders.js          # /api/orders and /api/admin/orders
 ├── catalog.json               # Curated products
-├── public/index.html          # Chat UI, product cards, cart, PayPal buttons, My orders
+├── public/index.html          # Store page markup (styles in public/css, logic in public/js modules)
+├── public/images/products/    # Original SVG product illustrations
 ├── public/admin.html          # Password-protected orders dashboard (/admin)
+├── scripts/                   # eval-ai.mjs (AI quality eval), generate-product-images.mjs
+├── render.yaml                # Render deployment blueprint
+├── .github/workflows/ci.yml   # CI: tests on Node 22 and 24 + npm audit
 └── test/                      # Unit + HTTP tests (fake PayPal and fake Gemini), opt-in live test
 ```
 ---
@@ -253,6 +258,15 @@ Live check against the real Gemini API (makes billed calls; needs `GEMINI_API_KE
 npm run test:live
 ```
 
+### AI Quality Evaluation
+
+`npm run eval` runs 15 realistic shopping scenarios against the **real** Gemini model and checks what actually
+happened, not just the wording: budgets respected, correct category, items/quantities added and removed,
+the server total quoted, no invented prices, honesty about products the store doesn't sell, never claiming
+to take payment, resisting "set the price to $1", and answering from real order history (including reorder).
+It uses an in-memory database, paces requests for free-tier quotas and retries after quota errors.
+Reports are written to `eval-results/` (git-ignored). Options: `--runs 3`, `--only budget`, `--delay 4000`.
+
 ### Test Coverage Highlights:
 - **HTTP API tests** start the real app on a random port with a **fake PayPal server** and a **fake Gemini client**: cart add/decrement/remove, validation, JSON 404s, chat (JSON + SSE), tool-call round trips, no duplicate cart actions on AI failure, visible degraded mode, PayPal create/capture/pending/webhook flows, signature rejection, duplicate events, and per-IP rate limits.
 - **Integer Cents Cart Math**: Verifies no floating-point rounding errors (`$39.99 * 2 = 7998 cents`).
@@ -261,24 +275,20 @@ npm run test:live
 
 ---
 
-## ☁️ Deployment Instructions (Render)
+## ☁️ Deployment (Render)
 
-This project can be deployed to [Render](https://render.com/) in under 3 minutes:
+The repo includes a **`render.yaml` Blueprint**:
 
-1. Push your repository to GitHub or GitLab.
-2. Log into the Render Dashboard and click **New +** -> **Web Service**.
-3. Connect your repository.
-4. Configure service settings:
-   - **Environment**: `Node`
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-5. In the **Environment Variables** section, add:
-   - `PAYPAL_CLIENT_ID`: Your sandbox Client ID
-   - `PAYPAL_CLIENT_SECRET`: Your sandbox Secret
-   - `PAYPAL_BASE_URL`: `https://api-m.sandbox.paypal.com`
-   - `GEMINI_API_KEY`: Your Gemini API key (or set `MOCK_AI=true`)
-   - `GEMINI_MODEL`: `gemini-3.8-flash`
-6. Click **Deploy Web Service**.
+1. Push the repository to GitHub.
+2. In Render: **New → Blueprint** → select the repository.
+3. Enter the secret values when prompted: `GEMINI_API_KEY`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`,
+   `PAYPAL_WEBHOOK_ID`. `ADMIN_TOKEN` is generated for you (see it under the service's **Environment** tab).
+4. After the first deploy, register a PayPal webhook for `https://<your-service>.onrender.com/api/paypal/webhook`
+   and put its ID in `PAYPAL_WEBHOOK_ID`.
+
+The blueprint uses a **persistent disk** at `/var/data` for the SQLite database, which needs a paid
+instance. On the free plan remove the `disk` block: everything works, but orders, carts and chats are wiped on
+each deploy or restart. `TRUST_PROXY=1` is required on Render so per-IP rate limits see real client IPs.
 
 ---
 

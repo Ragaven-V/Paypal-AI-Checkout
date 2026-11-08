@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test \"test/**/*.test.js\"",
-    "test:live": "node --test test/gemini.live.test.js"
+    "test:live": "node --test test/gemini.live.test.js",
+    "eval": "node scripts/eval-ai.mjs"
   },
   "keywords": [
     "paypal",

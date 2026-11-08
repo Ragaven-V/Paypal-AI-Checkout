@@ -1,0 +1,45 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# New > Blueprint > pick this repository. Fill in the secret values when prompted.
+services:
+  - type: web
+    name: ask-and-buy
+    runtime: node
+    # A persistent disk (for the SQLite database) needs a paid instance type.
+    # On the free plan, remove the `disk` block: the app still works, but orders,
+    # carts and chats are wiped on every deploy or restart.
+    plan: starter
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: DATABASE_PATH
+        value: /var/data/ai-checkout.db
+      # Render runs behind one proxy hop: needed for per-IP rate limits and HTTPS detection
+      - key: TRUST_PROXY
+        value: 1
+      - key: PAYPAL_BASE_URL
+        value: https://api-m.sandbox.paypal.com
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: GEMINI_THINKING_LEVEL
+        value: low
+      - key: MOCK_AI
+        value: 'false'
+      # Secrets: entered in the Render dashboard, never committed
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: ADMIN_TOKEN
+        generateValue: true
