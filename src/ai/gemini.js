@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { SYSTEM_INSTRUCTIONS } from './instructions.js';
 import { GEMINI_TOOLS, runToolCall } from './tools.js';
 import { catalog } from '../catalog.js';
+import { chatStore } from '../db.js';
 
 let aiClient = null;
 
@@ -146,20 +147,29 @@ function isUserTextTurn(content) {
 const MAX_HISTORY = 12;
 const KEEP_HISTORY = 8;
 
-// Get the session's chat, recreating it when the cache expired or history grew too long
+// Keep the most recent turns, starting at a user text turn so no functionCall/functionResponse
+// pair is cut in half (Gemini rejects orphaned function turns)
+export function trimHistory(history, maxLength = MAX_HISTORY, keep = KEEP_HISTORY) {
+  if (!Array.isArray(history)) return [];
+  let start = history.length > maxLength ? history.length - keep : 0;
+  while (start < history.length && !isUserTextTurn(history[start])) {
+    start++;
+  }
+  return history.slice(start);
+}
+
+// Get the session's chat, recreating it when the cache expired or history grew too long.
+// After a restart the chat is rebuilt from the history saved in the database.
 function getSessionChat(session) {
   if (!session.chat) {
-    session.chat = createGeminiChat();
+    session.chat = createGeminiChat(trimHistory(session.savedHistory || []));
+    session.savedHistory = null;
     return session.chat;
   }
   const history = session.chat.getHistory();
   const cacheStale = session.chat.cacheName && session.chat.cacheName !== getValidCacheName();
   if (history.length > MAX_HISTORY || cacheStale) {
-    let start = history.length > MAX_HISTORY ? history.length - KEEP_HISTORY : 0;
-    while (start < history.length && !isUserTextTurn(history[start])) {
-      start++;
-    }
-    session.chat = createGeminiChat(history.slice(start));
+    session.chat = createGeminiChat(trimHistory(history));
   }
   return session.chat;
 }
@@ -224,11 +234,19 @@ export async function runGeminiTurn(session, message, { onText = () => {}, onEve
     }
 
     recordAiSuccess();
+    try {
+      chatStore.saveHistory(session.id, chat.getHistory());
+    } catch (saveErr) {
+      console.error('Could not save chat history:', saveErr.message);
+    }
     return { text, products, toolsRan };
   } catch (err) {
     recordAiFailure(err);
-    // History may now end in an unanswered functionCall; start a fresh chat next turn
+    // History may now end in an unanswered functionCall; start a fresh chat next turn,
+    // and drop the saved copy too in case it is what the model rejected
     session.chat = null;
+    session.savedHistory = null;
+    try { chatStore.clearHistory(session.id); } catch { /* ignore */ }
     err.toolsRan = toolsRan;
     err.partialText = text;
     throw err;

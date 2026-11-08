@@ -1,13 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import { setTestEnv } from './helpers.js';
+
+// Use the in-memory test database, never the real one
+setTestEnv();
+const {
   app,
   getOrCreateSession,
   runMockAi,
   createPayPalOrder,
   capturePayPalOrder,
   executeAddToCart
-} from '../server.js';
+} = await import('../server.js');
 
 test('API & Checkout Routes', async (t) => {
   await t.test('createPayPalOrder refuses an empty cart with status 400', async () => {

@@ -1,12 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import { setTestEnv } from './helpers.js';
+
+// Use the in-memory test database, never the real one
+setTestEnv();
+const {
   executeSearchProducts,
   executeAddToCart,
   executeRemoveFromCart,
   executeViewCart,
   getOrCreateSession
-} from '../server.js';
+} = await import('../server.js');
 
 test('AI Tools Execution', async (t) => {
   await t.test('search_products matches keywords across names, descriptions and tags', () => {

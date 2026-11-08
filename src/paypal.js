@@ -1,6 +1,6 @@
 import { config } from './config.js';
 import { getCartSummary, removePaidItems } from './cart.js';
-import { sessions } from './sessions.js';
+import { getOrCreateSession } from './sessions.js';
 import { orderStore, webhookEventStore, clearAllForTesting } from './db.js';
 
 let cachedToken = null;
@@ -114,7 +114,8 @@ function settleOrder(record) {
   if (record.settled) return;
   record.settled = true;
   record.status = 'COMPLETED';
-  const session = sessions.get(record.sessionId);
+  // Load from the DB if needed, so the saved cart is updated even after a restart
+  const session = getOrCreateSession(record.sessionId);
   if (session) {
     removePaidItems(session, record.items);
     if (session.currentOrderId === record.orderId) {

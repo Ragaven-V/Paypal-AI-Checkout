@@ -5,6 +5,8 @@ import { getOrCreateSession } from '../sessions.js';
 import { getCartSummary, executeAddToCart, executeDecrementCart, executeRemoveFromCart } from '../cart.js';
 import { runMockAi } from '../ai/mockAi.js';
 import { runGeminiTurn, isAiEnabled, aiHealth } from '../ai/gemini.js';
+import { chatStore } from '../db.js';
+import { isValidShopperId } from '../orders.js';
 
 export const isValidSessionId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 128;
 
@@ -27,6 +29,21 @@ export function createApiRouter({ chatLimiter }) {
 
   router.get('/catalog', (req, res) => {
     res.json({ products: catalog });
+  });
+
+  // Saved chat transcript for a session, so the conversation reappears after a reload or restart
+  router.get('/chat/history', (req, res) => {
+    const { sessionId } = req.query;
+    if (!isValidSessionId(sessionId)) {
+      return res.status(400).json({ error: 'Valid sessionId is required' });
+    }
+    const messages = chatStore.listMessages(sessionId).map(m => ({
+      role: m.role,
+      text: m.text,
+      products: m.productIds.map(id => catalogMap.get(id)).filter(Boolean),
+      createdAt: new Date(m.createdAt).toISOString()
+    }));
+    res.json({ messages });
   });
 
   router.get('/cart', (req, res) => {
@@ -65,7 +82,7 @@ export function createApiRouter({ chatLimiter }) {
 
   // Chat: SSE streaming (stream: true or Accept: text/event-stream) or a single JSON response
   router.post('/chat', chatLimiter, async (req, res) => {
-    const { sessionId, message, stream } = req.body || {};
+    const { sessionId, message, stream, shopperId } = req.body || {};
 
     if (!isValidSessionId(sessionId)) {
       return res.status(400).json({ error: 'Valid sessionId is required' });
@@ -77,7 +94,11 @@ export function createApiRouter({ chatLimiter }) {
       return res.status(400).json({ error: 'Message exceeds maximum length of 1000 characters' });
     }
 
-    const session = getOrCreateSession(sessionId);
+    if (shopperId !== undefined && !isValidShopperId(shopperId)) {
+      return res.status(400).json({ error: 'Invalid shopperId' });
+    }
+
+    const session = getOrCreateSession(sessionId, { shopperId: shopperId ?? null });
     const isStream = stream === true || req.headers.accept?.includes('text/event-stream') || req.query.stream === 'true';
 
     if (isStream) {
@@ -88,8 +109,19 @@ export function createApiRouter({ chatLimiter }) {
     }
     const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
+    // Save the exchange to the transcript (never let a storage error break the reply)
+    const record = (reply, products = []) => {
+      try {
+        chatStore.addMessage(session.id, 'user', message);
+        if (reply) chatStore.addMessage(session.id, 'assistant', reply, products);
+      } catch (err) {
+        console.error('Could not save chat transcript:', err.message);
+      }
+    };
+
     const respondWithMock = async (notice) => {
       const result = runMockAi(session, message);
+      record(result.reply, result.products);
       if (!isStream) {
         return res.json(notice ? { ...result, notice } : result);
       }
@@ -117,12 +149,10 @@ export function createApiRouter({ chatLimiter }) {
         onEvent: (event) => isStream && send(event)
       });
 
+      const reply = result.text || "I've updated your shopping request. Let me know if you need anything else!";
+      record(reply, result.products);
       if (!isStream) {
-        return res.json({
-          reply: result.text || "I've updated your shopping request. Let me know if you need anything else!",
-          products: result.products,
-          cart: getCartSummary(session)
-        });
+        return res.json({ reply, products: result.products, cart: getCartSummary(session) });
       }
       send({ type: 'cart', cart: getCartSummary(session) });
       send({ type: 'done' });
@@ -132,6 +162,7 @@ export function createApiRouter({ chatLimiter }) {
 
       // Tools already changed the cart (or text was streamed): replaying via the mock would repeat actions
       if (err.toolsRan || err.partialText) {
+        record(err.partialText || TOOL_FAILURE_REPLY);
         if (!isStream) {
           return res.json({ reply: err.partialText || TOOL_FAILURE_REPLY, products: [], cart: getCartSummary(session) });
         }

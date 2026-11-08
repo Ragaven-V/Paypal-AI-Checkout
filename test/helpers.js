@@ -125,15 +125,19 @@ export function createFakeGemini(script) {
     chats: {
       create(options) {
         calls.chatsCreated.push(options);
+        // Like the real SDK: history = initial history + every completed exchange
+        const history = structuredClone(options.history || []);
         return {
-          getHistory: () => [],
+          getHistory: () => structuredClone(history),
           async sendMessageStream({ message }) {
             calls.messages.push(message);
             const turn = turns.shift();
             if (!turn) throw new Error('Fake Gemini: no scripted turn left');
             if (turn instanceof Error) throw turn;
+            const userParts = typeof message === 'string' ? [{ text: message }] : message;
             return (async function* () {
               for (const parts of turn) yield chunk(parts);
+              history.push({ role: 'user', parts: userParts }, { role: 'model', parts: turn.flat() });
             })();
           }
         };

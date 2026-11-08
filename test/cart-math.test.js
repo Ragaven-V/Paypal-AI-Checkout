@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getOrCreateSession, executeAddToCart, executeRemoveFromCart, getCartSummary, catalog } from '../server.js';
+import { setTestEnv } from './helpers.js';
+
+// Use the in-memory test database, never the real one
+setTestEnv();
+const { getOrCreateSession, executeAddToCart, executeRemoveFromCart, getCartSummary, catalog } = await import('../server.js');
 
 test('Cart Math in Integer Cents', async (t) => {
   await t.test('computes item price and subtotal strictly in integer cents', () => {

@@ -25,6 +25,39 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS orders_session_idx ON orders (session_id);
 
+  -- Shopping sessions (one per browser tab session), with their carts and chats
+  CREATE TABLE IF NOT EXISTS sessions (
+    session_id  TEXT PRIMARY KEY,
+    shopper_id  TEXT,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS cart_items (
+    session_id  TEXT NOT NULL,
+    product_id  TEXT NOT NULL,
+    quantity    INTEGER NOT NULL,
+    PRIMARY KEY (session_id, product_id)
+  );
+
+  -- Visible chat transcript, so the conversation is still on screen after a reload or restart
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id    TEXT NOT NULL,
+    role          TEXT NOT NULL,
+    text          TEXT NOT NULL,
+    products_json TEXT,
+    created_at    INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS chat_messages_session_idx ON chat_messages (session_id, id);
+
+  -- Gemini conversation state (Content[] incl. thought signatures) to resume the model's context
+  CREATE TABLE IF NOT EXISTS chat_history (
+    session_id    TEXT PRIMARY KEY,
+    history_json  TEXT NOT NULL,
+    updated_at    INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS webhook_events (
     event_id    TEXT PRIMARY KEY,
     event_type  TEXT NOT NULL,
@@ -156,6 +189,105 @@ export const webhookEventStore = {
   }
 };
 
+export const sessionStore = {
+  // Upsert a session row; shopperId is kept once known
+  touch(sessionId, shopperId = null) {
+    const now = Date.now();
+    getDb().prepare(`
+      INSERT INTO sessions (session_id, shopper_id, created_at, updated_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT (session_id) DO UPDATE SET
+        shopper_id = COALESCE(excluded.shopper_id, sessions.shopper_id),
+        updated_at = excluded.updated_at
+    `).run(sessionId, shopperId, now, now);
+  },
+
+  get(sessionId) {
+    return getDb().prepare('SELECT * FROM sessions WHERE session_id = ?').get(sessionId) || null;
+  },
+
+  // Remove sessions (and their carts/chats) idle for longer than maxAgeMs
+  pruneOlderThan(maxAgeMs) {
+    const cutoff = Date.now() - maxAgeMs;
+    const db = getDb();
+    const stale = `SELECT session_id FROM sessions WHERE updated_at < ${Number(cutoff)}`;
+    db.exec(`
+      DELETE FROM cart_items WHERE session_id IN (${stale});
+      DELETE FROM chat_messages WHERE session_id IN (${stale});
+      DELETE FROM chat_history WHERE session_id IN (${stale});
+      DELETE FROM sessions WHERE updated_at < ${Number(cutoff)};
+    `);
+  }
+};
+
+export const cartStore = {
+  load(sessionId) {
+    return getDb().prepare('SELECT product_id, quantity FROM cart_items WHERE session_id = ?')
+      .all(sessionId).map(r => [r.product_id, r.quantity]);
+  },
+
+  set(sessionId, productId, quantity) {
+    getDb().prepare(`
+      INSERT INTO cart_items (session_id, product_id, quantity) VALUES (?, ?, ?)
+      ON CONFLICT (session_id, product_id) DO UPDATE SET quantity = excluded.quantity
+    `).run(sessionId, productId, quantity);
+  },
+
+  delete(sessionId, productId) {
+    getDb().prepare('DELETE FROM cart_items WHERE session_id = ? AND product_id = ?').run(sessionId, productId);
+  },
+
+  clear(sessionId) {
+    getDb().prepare('DELETE FROM cart_items WHERE session_id = ?').run(sessionId);
+  }
+};
+
+const MAX_TRANSCRIPT = 200;
+
+export const chatStore = {
+  addMessage(sessionId, role, text, products = []) {
+    const db = getDb();
+    db.prepare(`INSERT INTO chat_messages (session_id, role, text, products_json, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(sessionId, role, text, products.length ? JSON.stringify(products.map(p => p.id)) : null, Date.now());
+    // Keep the transcript bounded per session
+    db.prepare(`
+      DELETE FROM chat_messages WHERE session_id = ? AND id NOT IN (
+        SELECT id FROM chat_messages WHERE session_id = ? ORDER BY id DESC LIMIT ?
+      )
+    `).run(sessionId, sessionId, MAX_TRANSCRIPT);
+  },
+
+  // Most recent messages, oldest first. productIds are resolved by the caller.
+  listMessages(sessionId, limit = 50) {
+    return getDb().prepare(`
+      SELECT role, text, products_json, created_at FROM (
+        SELECT * FROM chat_messages WHERE session_id = ? ORDER BY id DESC LIMIT ?
+      ) ORDER BY id ASC
+    `).all(sessionId, limit).map(r => ({
+      role: r.role,
+      text: r.text,
+      productIds: r.products_json ? JSON.parse(r.products_json) : [],
+      createdAt: r.created_at
+    }));
+  },
+
+  saveHistory(sessionId, history) {
+    getDb().prepare(`
+      INSERT INTO chat_history (session_id, history_json, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT (session_id) DO UPDATE SET history_json = excluded.history_json, updated_at = excluded.updated_at
+    `).run(sessionId, JSON.stringify(history), Date.now());
+  },
+
+  loadHistory(sessionId) {
+    const row = getDb().prepare('SELECT history_json FROM chat_history WHERE session_id = ?').get(sessionId);
+    return row ? JSON.parse(row.history_json) : null;
+  },
+
+  clearHistory(sessionId) {
+    getDb().prepare('DELETE FROM chat_history WHERE session_id = ?').run(sessionId);
+  }
+};
+
 export function clearAllForTesting() {
-  getDb().exec('DELETE FROM orders; DELETE FROM webhook_events;');
+  getDb().exec(`DELETE FROM orders; DELETE FROM webhook_events; DELETE FROM sessions;
+    DELETE FROM cart_items; DELETE FROM chat_messages; DELETE FROM chat_history;`);
 }
