@@ -6,7 +6,7 @@ import { config } from './config.js';
  * platforms / log search); "pretty" prints readable lines for local development.
  * Never pass secrets in fields.
  */
-const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
+const LEVELS = { debug: 10, info: 20, warn: 30, error: 40, silent: 100 };
 
 function serialize(fields) {
   const out = {};
@@ -21,9 +21,20 @@ function serialize(fields) {
   return out;
 }
 
-function write(level, msg, fields) {
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !(v instanceof Error) && !Array.isArray(v);
+
+// Accepts log.info('msg', { fields }) as well as console-style log.info('msg', value, value...)
+function toFields(args) {
+  if (args.length === 0) return {};
+  if (args.length === 1 && isPlainObject(args[0])) return args[0];
+  const err = args.find(a => a instanceof Error);
+  const detail = args.filter(a => !(a instanceof Error)).map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+  return { ...(detail ? { detail: detail.slice(0, 1000) } : {}), ...(err ? { err } : {}) };
+}
+
+function write(level, msg, ...args) {
   if (LEVELS[level] < (LEVELS[config.logLevel] ?? LEVELS.info)) return;
-  const data = serialize(fields);
+  const data = serialize(toFields(args));
   const stream = level === 'error' || level === 'warn' ? process.stderr : process.stdout;
   if (config.logFormat === 'json') {
     stream.write(JSON.stringify({ time: new Date().toISOString(), level, msg, ...data }) + '\n');
@@ -34,10 +45,10 @@ function write(level, msg, fields) {
 }
 
 export const log = {
-  debug: (msg, fields) => write('debug', msg, fields),
-  info: (msg, fields) => write('info', msg, fields),
-  warn: (msg, fields) => write('warn', msg, fields),
-  error: (msg, fields) => write('error', msg, fields)
+  debug: (msg, ...args) => write('debug', msg, ...args),
+  info: (msg, ...args) => write('info', msg, ...args),
+  warn: (msg, ...args) => write('warn', msg, ...args),
+  error: (msg, ...args) => write('error', msg, ...args)
 };
 
 /**

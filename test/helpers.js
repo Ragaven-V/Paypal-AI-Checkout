@@ -13,6 +13,7 @@ export function setTestEnv(overrides = {}) {
     RATE_LIMIT_CHAT_PER_MIN: '1000',
     RATE_LIMIT_API_PER_MIN: '1000',
     DATABASE_PATH: ':memory:',
+    LOG_LEVEL: 'silent',
     // Pricing defaults that keep totals equal to the items sum; pricing tests override these
     SHIPPING_FLAT_CENTS: '0',
     TAX_RATE_PERCENT: '0',

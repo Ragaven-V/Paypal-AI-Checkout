@@ -7,6 +7,7 @@ import { runMockAi } from '../ai/mockAi.js';
 import { runGeminiTurn, isAiEnabled, aiHealth, aiCooldownRemainingMs, isQuotaError } from '../ai/gemini.js';
 import { chatStore } from '../db.js';
 import { isValidShopperId } from '../orders.js';
+import { log } from '../logger.js';
 
 export const isValidSessionId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 128;
 
@@ -123,7 +124,7 @@ export function createApiRouter({ chatLimiter }) {
         chatStore.addMessage(session.id, 'user', message);
         if (reply) chatStore.addMessage(session.id, 'assistant', reply, products);
       } catch (err) {
-        console.error('Could not save chat transcript:', err.message);
+        log.error('Could not save chat transcript:', err.message);
       }
     };
 
@@ -170,7 +171,7 @@ export function createApiRouter({ chatLimiter }) {
       send({ type: 'done' });
       return res.end();
     } catch (err) {
-      console.error('Gemini chat error:', String(err.message).slice(0, 300));
+      log.error('Gemini chat error:', String(err.message).slice(0, 300));
 
       // Tools already changed the cart (or text was streamed): replaying via the mock would repeat actions
       if (err.toolsRan || err.partialText) {

@@ -4,6 +4,7 @@ import { SYSTEM_INSTRUCTIONS } from './instructions.js';
 import { GEMINI_TOOLS, runToolCall } from './tools.js';
 import { catalog } from '../catalog.js';
 import { chatStore } from '../db.js';
+import { log } from '../logger.js';
 
 let aiClient = null;
 
@@ -28,7 +29,7 @@ if (!config.mockAiForced && config.geminiApiKey) {
       }
     });
   } catch (err) {
-    console.warn('Warning: Failed to initialize GoogleGenAI client, will use Mock AI mode:', err.message);
+    log.warn('Warning: Failed to initialize GoogleGenAI client, will use Mock AI mode:', err.message);
   }
 }
 
@@ -131,11 +132,11 @@ async function setupExplicitCache() {
     });
     // Refresh slightly before the server-side TTL elapses
     cacheExpiresAt = Date.now() + (CACHE_TTL_SECONDS - 60) * 1000;
-    console.log('⚡ Explicit context caching initialized:', explicitCache.name);
+    log.info('⚡ Explicit context caching initialized:', explicitCache.name);
   } catch (err) {
     // Usually: content below the model's minimum cacheable token count. Implicit caching still applies.
     explicitCache = null;
-    console.log('⚡ Context caching using implicit prefix caching mode:', String(err.message).slice(0, 160));
+    log.info('⚡ Context caching using implicit prefix caching mode:', String(err.message).slice(0, 160));
   }
 }
 
@@ -272,7 +273,7 @@ export async function runGeminiTurn(session, message, { onText = () => {}, onEve
     try {
       chatStore.saveHistory(session.id, chat.getHistory());
     } catch (saveErr) {
-      console.error('Could not save chat history:', saveErr.message);
+      log.error('Could not save chat history:', saveErr.message);
     }
     return { text, products, toolsRan };
   } catch (err) {
@@ -302,12 +303,12 @@ export async function runAiSelfCheck() {
       config: { ...baseGenerationConfig(), systemInstruction: SYSTEM_INSTRUCTIONS, tools: GEMINI_TOOLS }
     });
     recordAiSuccess();
-    console.log(`✅ Gemini self-check passed (${config.geminiModel})`);
+    log.info(`✅ Gemini self-check passed (${config.geminiModel})`);
     return { ok: true };
   } catch (err) {
     recordAiFailure(err);
-    console.error(`❌ Gemini self-check FAILED for ${config.geminiModel}: ${aiHealth.lastError}`);
-    console.error('   Chat will fall back to the rule-based assistant until this is fixed.');
+    log.error(`❌ Gemini self-check FAILED for ${config.geminiModel}: ${aiHealth.lastError}`);
+    log.error('   Chat will fall back to the rule-based assistant until this is fixed.');
     return { ok: false, error: aiHealth.lastError };
   }
 }

@@ -9,6 +9,7 @@ import {
 } from '../paypal.js';
 import { isValidSessionId } from './api.js';
 import { isValidShopperId } from '../orders.js';
+import { log } from '../logger.js';
 
 export function createPayPalRouter() {
   const router = Router();
@@ -25,7 +26,7 @@ export function createPayPalRouter() {
       const order = await createPayPalOrder(getOrCreateSession(sessionId), { shopperId: shopperId ?? null, userId: req.user?.id ?? null });
       res.json({ orderID: order.id });
     } catch (err) {
-      console.error('Failed to create PayPal order:', err.message);
+      log.error('Failed to create PayPal order:', err.message);
       res.status(err.status || 500).json({ error: err.message });
     }
   });
@@ -60,7 +61,7 @@ export function createPayPalRouter() {
         captureId: record.captureId
       });
     } catch (err) {
-      console.error('Failed to capture PayPal order:', err.message);
+      log.error('Failed to capture PayPal order:', err.message);
       res.status(err.status || 500).json({ error: err.message });
     }
   });
@@ -90,14 +91,14 @@ export async function paypalWebhookHandler(req, res) {
   try {
     const verified = await verifyWebhookSignature(req.headers, event);
     if (!verified) {
-      console.warn('Rejected PayPal webhook with invalid signature:', event.id);
+      log.warn('Rejected PayPal webhook with invalid signature:', event.id);
       return res.status(400).json({ error: 'Webhook signature verification failed' });
     }
     const outcome = handleWebhookEvent(event);
-    console.log(`PayPal webhook ${event.event_type} (${event.id}): ${outcome}`);
+    log.info(`PayPal webhook ${event.event_type} (${event.id}): ${outcome}`);
     res.json({ received: true, outcome });
   } catch (err) {
-    console.error('PayPal webhook error:', err.message);
+    log.error('PayPal webhook error:', err.message);
     // Non-2xx makes PayPal retry later
     res.status(err.status || 500).json({ error: err.message });
   }

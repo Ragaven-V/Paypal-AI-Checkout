@@ -2,6 +2,7 @@ import { config } from './config.js';
 import { getCartSummary, removePaidItems } from './cart.js';
 import { getOrCreateSession } from './sessions.js';
 import { orderStore, webhookEventStore, clearAllForTesting } from './db.js';
+import { log } from './logger.js';
 
 let cachedToken = null;
 
@@ -36,7 +37,7 @@ export async function getPayPalAccessToken() {
   });
 
   if (!res.ok) {
-    console.error(`PayPal OAuth failed (${res.status}):`, await res.text());
+    log.error(`PayPal OAuth failed (${res.status}):`, await res.text());
     throw httpError('Could not authenticate with PayPal.', 502);
   }
 
@@ -89,7 +90,7 @@ export async function createPayPalOrder(session, { shopperId = null, userId = nu
   });
 
   if (!res.ok) {
-    console.error(`PayPal order creation failed (${res.status}):`, await res.text());
+    log.error(`PayPal order creation failed (${res.status}):`, await res.text());
     throw httpError('PayPal could not create the order. Please try again.', 502);
   }
 
@@ -145,7 +146,7 @@ export async function capturePayPalOrder(session, orderID) {
   const res = await paypalFetch(`/v2/checkout/orders/${encodeURIComponent(orderID)}/capture`, { method: 'POST' });
   if (!res.ok) {
     const body = await res.text();
-    console.error(`PayPal capture failed (${res.status}):`, body);
+    log.error(`PayPal capture failed (${res.status}):`, body);
     const notApproved = res.status === 422 && body.includes('ORDER_NOT_APPROVED');
     throw httpError(notApproved ? 'The order has not been approved by the buyer yet.' : 'PayPal could not capture the payment.', notApproved ? 422 : 502);
   }
@@ -207,7 +208,7 @@ export async function verifyWebhookSignature(headers, event) {
   });
 
   if (!res.ok) {
-    console.error(`PayPal webhook verification call failed (${res.status}):`, await res.text());
+    log.error(`PayPal webhook verification call failed (${res.status}):`, await res.text());
     throw httpError('Could not verify webhook with PayPal.', 502);
   }
   const data = await res.json();

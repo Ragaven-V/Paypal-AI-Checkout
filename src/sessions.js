@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { sessionStore, cartStore, chatStore } from './db.js';
+import { log } from './logger.js';
 
 /**
  * Sessions are cached in memory and backed by SQLite, so carts and chats survive restarts.
@@ -92,7 +93,7 @@ const cleanupTimer = setInterval(() => {
   try {
     sessionStore.pruneOlderThan(DB_RETENTION_MS);
   } catch (err) {
-    console.error('Session prune failed:', err.message);
+    log.error('Session prune failed:', err.message);
   }
 }, CLEANUP_INTERVAL_MS);
 cleanupTimer.unref();
