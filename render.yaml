@@ -4,23 +4,19 @@ services:
   - type: web
     name: ask-and-buy
     runtime: node
-    # A persistent disk (for the SQLite database) needs a paid instance type.
-    # On the free plan, remove the `disk` block: the app still works, but orders,
-    # carts and chats are wiped on every deploy or restart.
-    plan: starter
+    # Free plan: no persistent disk, so the SQLite database (orders, carts, chats) is reset
+    # on every deploy or restart, and the service sleeps after 15 minutes without traffic.
+    # To keep data: set `plan: starter` and add
+    #   disk: { name: data, mountPath: /var/data, sizeGB: 1 }
+    # plus the env var DATABASE_PATH=/var/data/ai-checkout.db
+    plan: free
     buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /healthz
     autoDeploy: true
-    disk:
-      name: data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 24
-      - key: DATABASE_PATH
-        value: /var/data/ai-checkout.db
       # Render runs behind one proxy hop: needed for per-IP rate limits and HTTPS detection
       - key: TRUST_PROXY
         value: 1

@@ -286,9 +286,10 @@ The repo includes a **`render.yaml` Blueprint**:
 4. After the first deploy, register a PayPal webhook for `https://<your-service>.onrender.com/api/paypal/webhook`
    and put its ID in `PAYPAL_WEBHOOK_ID`.
 
-The blueprint uses a **persistent disk** at `/var/data` for the SQLite database, which needs a paid
-instance. On the free plan remove the `disk` block: everything works, but orders, carts and chats are wiped on
-each deploy or restart. `TRUST_PROXY=1` is required on Render so per-IP rate limits see real client IPs.
+The blueprint uses Render's **free plan**: everything works, but the SQLite database (orders, carts,
+chats) is reset on each deploy or restart, and the service sleeps after 15 idle minutes (the first visit
+then takes about 50 seconds). To keep data, switch to `plan: starter` with a disk as described in
+`render.yaml`. `TRUST_PROXY=1` is required on Render so per-IP rate limits see real client IPs.
 
 ---
 
